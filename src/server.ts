@@ -21,11 +21,11 @@ console.log(`cotations-marche : http://localhost:${PORT}`)
 // Le marche avance, que quelqu'un ecoute ou non.
 setInterval(() => avancer(store), 500)
 
-// // --- couche temps reel : stub naif (a remplacer, voir TRANSPOSITION.md) ---
-// startNaiveStub<ClientMessage>(app.server, {
-//   // diffuse TOUS les carnets a TOUT LE MONDE (defaut : etape 4, pas d'abonnement par instrument)
-//   fullState: () => Object.fromEntries(store.carnets),
-//   parseInput: parseClientMessage,
-//   applyInput: () => {}, // "subscribe" est ignore : le stub envoie tout de toute facon
-// })
-// console.log('couche temps reel : stub naif (voir src/realtime/naive-stub.ts)')
+// --- couche temps reel : stub naif (a remplacer, voir TRANSPOSITION.md) ---
+startNaiveStub<ClientMessage>(app.server, {
+  // diffuse TOUS les carnets a TOUT LE MONDE (defaut : etape 4, pas d'abonnement par instrument)
+  fullState: () => Object.fromEntries(store.carnets),
+  parseInput: parseClientMessage,
+  applyInput: () => {}, // "subscribe" est ignore : le stub envoie tout de toute facon
+})
+console.log('couche temps reel : stub naif (voir src/realtime/naive-stub.ts)')

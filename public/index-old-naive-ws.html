@@ -18,9 +18,9 @@
   <h1>Cotations marche <span id="status" class="hint">deconnecte</span></h1>
   <div id="instruments"></div>
   <p class="hint">
-    Choisissez un instrument. Le flux SSE vous envoie le carnet de <b>tous</b> les
-    instruments en continu (regardez l'onglet Reseau). En cas de coupure, le navigateur
-    se reconnecte automatiquement et transmet le dernier identifiant recu.
+    Choisissez un instrument. Le stub vous envoie quand meme le carnet de <b>tous</b> les
+    instruments, en continu (regardez l'onglet Reseau). Coupez le reseau 3 s puis reactivez :
+    les ticks manques sont perdus, aucun rattrapage.
   </p>
   <h2 id="titre">-</h2>
   <table>
@@ -48,23 +48,13 @@
     }
 
     let lastState = {}
-    const stream = new EventSource('/api/stream')
-    stream.onopen = () => (status.textContent = 'connecte')
-    stream.onerror = () => {
-      status.textContent = stream.readyState === EventSource.CONNECTING
-        ? 'reconnexion...'
-        : 'deconnecte'
+    const ws = new WebSocket(`ws://${location.host}`)
+    ws.onopen = () => (status.textContent = 'connecte')
+    ws.onclose = () => (status.textContent = 'deconnecte')
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data)
+      if (msg.type === 'state') { lastState = msg.state; render(lastState) }
     }
-    stream.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
-      if (msg.type === 'state') {
-        lastState = msg.state
-        render(lastState)
-      }
-    }
-    stream.addEventListener('resync-needed', () => {
-      status.textContent = 'resynchronisation...'
-    })
 
     function render(state) {
       const c = state[sel]

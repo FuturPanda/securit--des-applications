@@ -1,4 +1,8 @@
-import type { FastifyInstance } from 'fastify'
+import type {
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+} from 'fastify'
 import type { ServerResponse } from 'node:http'
 
 interface SseEvent {
@@ -10,7 +14,10 @@ const MAX_BUFFER_SIZE = 100
 const HEARTBEAT_INTERVAL_MS = 15_000
 const EVENT_INTERVAL_MS = 1_000
 
-export function registerSseRoute(app: FastifyInstance): void {
+export function createSseHandler(
+  app: FastifyInstance,
+  getState: () => unknown,
+) {
   const events: SseEvent[] = []
   const clients = new Set<ServerResponse>()
   let nextEventId = 1
@@ -27,10 +34,22 @@ export function registerSseRoute(app: FastifyInstance): void {
   }
 
   const producer = setInterval(() => {
-    broadcast(clients, record(`item ${nextEventId}`))
+    const data = JSON.stringify({ type: 'state', state: getState() })
+    broadcast(clients, record(data))
   }, EVENT_INTERVAL_MS)
 
-  app.get('/api/stream', async (request, reply) => {
+  app.addHook('onClose', (_instance, done) => {
+    clearInterval(producer)
+
+    for (const client of clients) {
+      client.end()
+    }
+
+    clients.clear()
+    done()
+  })
+
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     reply.hijack()
 
     const response = reply.raw
@@ -74,18 +93,7 @@ export function registerSseRoute(app: FastifyInstance): void {
       clearInterval(heartbeat)
       clients.delete(response)
     })
-  })
-
-  app.addHook('onClose', (_instance, done) => {
-    clearInterval(producer)
-
-    for (const client of clients) {
-      client.end()
-    }
-
-    clients.clear()
-    done()
-  })
+  }
 }
 
 function parseLastEventId(header: string | string[] | undefined): number {

@@ -1,8 +1,12 @@
 import type { FastifyInstance } from 'fastify'
-import { registerSseRoute } from './realtime/sse.ts'
+import { createSseHandler } from './realtime/sse.ts'
 import type { Store } from './store.ts'
 
 export function registerRoutes(app: FastifyInstance, store: Store): void {
+  const sseHandler = createSseHandler(app, () =>
+    Object.fromEntries(store.carnets),
+  )
+
   app.get('/api/instruments', async () => store.instruments)
 
   app.get('/api/instruments/:sym/book', async (req, reply) => {
@@ -20,5 +24,5 @@ export function registerRoutes(app: FastifyInstance, store: Store): void {
     return hist.filter((c) => c.seq >= from).map((c) => ({ seq: c.seq, prix: c.dernierPrix }))
   })
 
-  registerSseRoute(app)
+  app.get('/api/stream', sseHandler)
 }
