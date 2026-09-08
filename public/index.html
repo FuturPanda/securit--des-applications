@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cotations marche</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 1.5rem; max-width: 760px; }
+    table { border-collapse: collapse; margin-top: .5rem; }
+    td, th { border: 1px solid #ccc; padding: 3px 10px; text-align: right; font-family: ui-monospace, monospace; }
+    .up { color: #0a0; } .down { color: #c00; }
+    .hint { color: #666; }
+    #instruments button { margin: 2px; font: inherit; }
+    #instruments button.sel { font-weight: bold; outline: 2px solid #333; }
+  </style>
+</head>
+<body>
+  <h1>Cotations marche <span id="status" class="hint">deconnecte</span></h1>
+  <div id="instruments"></div>
+  <p class="hint">
+    Choisissez un instrument. Le stub vous envoie quand meme le carnet de <b>tous</b> les
+    instruments, en continu (regardez l'onglet Reseau). Coupez le reseau 3 s puis reactivez :
+    les ticks manques sont perdus, aucun rattrapage.
+  </p>
+  <h2 id="titre">-</h2>
+  <table>
+    <thead><tr><th>bid qty</th><th>bid</th><th>ask</th><th>ask qty</th></tr></thead>
+    <tbody id="book"></tbody>
+  </table>
+  <p>dernier prix : <span id="last" class="mono">-</span> (seq <span id="seq">-</span>)</p>
+
+  <script>
+    let sel = 'ACME'
+    let prev = null
+    const status = document.getElementById('status')
+
+    fetch('/api/instruments').then((r) => r.json()).then((list) => {
+      document.getElementById('instruments').innerHTML = list
+        .map((i) => `<button data-s="${i.symbole}">${i.symbole} - ${i.nom}</button>`).join('')
+      document.querySelectorAll('#instruments button').forEach((b) => {
+        b.onclick = () => { sel = b.dataset.s; render(lastState); mark() }
+      })
+      mark()
+    })
+    function mark() {
+      document.querySelectorAll('#instruments button').forEach((b) =>
+        b.classList.toggle('sel', b.dataset.s === sel))
+    }
+
+    let lastState = {}
+    const ws = new WebSocket(`ws://${location.host}`)
+    ws.onopen = () => (status.textContent = 'connecte')
+    ws.onclose = () => (status.textContent = 'deconnecte')
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data)
+      if (msg.type === 'state') { lastState = msg.state; render(lastState) }
+    }
+
+    function render(state) {
+      const c = state[sel]
+      if (!c) return
+      document.getElementById('titre').textContent = sel
+      document.getElementById('book').innerHTML = [0, 1].map((i) => `
+        <tr><td>${c.bids[i]?.quantite ?? ''}</td><td>${c.bids[i]?.prix ?? ''}</td>
+        <td>${c.asks[i]?.prix ?? ''}</td><td>${c.asks[i]?.quantite ?? ''}</td></tr>`).join('')
+      const last = document.getElementById('last')
+      last.textContent = c.dernierPrix
+      last.className = prev == null ? '' : c.dernierPrix >= prev ? 'up' : 'down'
+      prev = c.dernierPrix
+      document.getElementById('seq').textContent = c.seq
+    }
+  </script>
+</body>
+</html>

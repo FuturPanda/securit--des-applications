@@ -1,0 +1,43 @@
+name: template
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      # REDIS_URL: redis://redis:6379   # a decommenter a l'etape 7
+
+  # ==========================================================================
+  #  ETAPE 7 - scaling horizontal. Commentez le service `app` ci-dessus et
+  #  decommentez tout ce qui suit : 2 instances derriere un proxy sticky + Redis.
+  #  Il reste a brancher @socket.io/redis-adapter dans src/server.ts.
+  # ==========================================================================
+
+  # redis:
+  #   image: redis:7-alpine
+
+  # app-a:
+  #   build: .
+  #   environment:
+  #     INSTANCE: A
+  #     PORT: "3000"
+  #     REDIS_URL: redis://redis:6379
+  #   depends_on: [redis]
+
+  # app-b:
+  #   build: .
+  #   environment:
+  #     INSTANCE: B
+  #     PORT: "3000"
+  #     REDIS_URL: redis://redis:6379
+  #   depends_on: [redis]
+
+  # proxy:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #   depends_on: [app-a, app-b]
