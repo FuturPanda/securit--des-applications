@@ -16,7 +16,6 @@ export function createStore(): Store {
   return { carnets, historique, instruments: INSTRUMENTS, graine: 1000 }
 }
 
-/** Fait avancer tous les carnets d'un tick. Appele par le stub sur un intervalle. */
 export function avancer(store: Store): void {
   store.graine++
   for (const [sym, carnet] of store.carnets) {
