@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "ws:token": "tsx src/realtime/ws/make-token.ts",
     "seed": "tsx src/seed.ts --print",
     "scenario": "tsx src/realtime/piege.scenario.ts",
     "typecheck": "tsc --noEmit"
