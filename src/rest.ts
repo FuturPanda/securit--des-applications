@@ -3,11 +3,14 @@ import { createSseHandler } from './realtime/sse.ts'
 import type { Store } from './store.ts'
 
 export function registerRoutes(app: FastifyInstance, store: Store): void {
-  const sseHandler = createSseHandler(app, () =>
-    Object.fromEntries(store.carnets),
-  )
+  const sseHandler = createSseHandler(app, () => ({
+    carnets: Object.fromEntries(store.carnets),
+    bids: store.bidsRecents.slice(-30),
+  }))
 
   app.get('/api/instruments', async () => store.instruments)
+
+  app.get('/api/bids', async () => store.bidsRecents.slice(-30))
 
   app.get('/api/instruments/:sym/book', async (req, reply) => {
     const sym = (req.params as { sym: string }).sym.toUpperCase()

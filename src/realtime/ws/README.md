@@ -14,8 +14,8 @@
 ```bash
 npm start
 npm run ws:token          # genere un JWT de test
-wscat -c "ws://localhost:3000?token=<TOKEN>"
-wscat -c ws://localhost:3000          # refuse : 401
+wscat -c "ws://localhost:3009?token=<TOKEN>"
+wscat -c ws://localhost:3009          # refuse : 401
 ```
 
 ## À observer

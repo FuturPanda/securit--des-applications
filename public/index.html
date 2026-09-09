@@ -5,65 +5,593 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cotations marche</title>
   <style>
-    body { font: 14px system-ui, sans-serif; margin: 1.5rem; max-width: 760px; }
-    table { border-collapse: collapse; margin-top: .5rem; }
-    td, th { border: 1px solid #ccc; padding: 3px 10px; text-align: right; font-family: ui-monospace, monospace; }
-    .up { color: #0a0; } .down { color: #c00; }
-    .hint { color: #666; }
-    #instruments button { margin: 2px; font: inherit; }
-    #instruments button.sel { font-weight: bold; outline: 2px solid #333; }
+    :root {
+      --ink: #111;
+      --paper: #f0eee7;
+      --white: #fff;
+      --acid: #dfff00;
+      --soft: #d7d3ca;
+      --red: #d83a27;
+      --border: 3px solid var(--ink);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .page {
+      width: min(1500px, calc(100% - 32px));
+      margin: 16px auto 48px;
+    }
+
+    .eyebrow,
+    .section-label,
+    .status,
+    th,
+    label {
+      font-size: .72rem;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      min-height: 300px;
+      padding: 28px 32px;
+      background: var(--white);
+      border: var(--border);
+      box-shadow: 10px 10px 0 var(--ink);
+    }
+
+    h1 {
+      max-width: 1000px;
+      margin: 12px 0 -8px;
+      font-size: clamp(4rem, 10vw, 9rem);
+      font-weight: 900;
+      letter-spacing: -.075em;
+      line-height: .78;
+      text-transform: uppercase;
+    }
+
+    .live-stack { display: grid; gap: 8px; min-width: 230px; }
+
+    .status {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 12px;
+      background: var(--paper);
+      border: 2px solid var(--ink);
+    }
+
+    .status::before { content: "●"; }
+    .status.online::before { color: #16823b; }
+    .status.error::before { color: var(--red); }
+
+    .block {
+      margin-top: 34px;
+      background: var(--white);
+      border: var(--border);
+    }
+
+    .block-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px 22px;
+      border-bottom: var(--border);
+    }
+
+    .block-head h2,
+    .panel-title {
+      margin: 0;
+      font-size: clamp(1.6rem, 3vw, 3rem);
+      font-weight: 900;
+      letter-spacing: -.045em;
+      line-height: .95;
+      text-transform: uppercase;
+    }
+
+    #instruments {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    #instruments button {
+      min-height: 120px;
+      padding: 18px;
+      background: var(--white);
+      border: 0;
+      border-right: var(--border);
+      cursor: pointer;
+      font-size: clamp(1.1rem, 2vw, 1.8rem);
+      font-weight: 900;
+      text-align: left;
+      text-transform: uppercase;
+    }
+
+    #instruments button:last-child { border-right: 0; }
+    #instruments button:hover { background: var(--paper); }
+    #instruments button.sel { background: var(--acid); }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(320px, .8fr);
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    .market,
+    .trade-panel {
+      background: var(--white);
+      border: var(--border);
+    }
+
+    .market { box-shadow: 8px 8px 0 var(--ink); }
+
+    .market-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 24px;
+      border-bottom: var(--border);
+    }
+
+    #titre {
+      margin: 4px 0 0;
+      font-size: clamp(3.5rem, 8vw, 7rem);
+      font-weight: 900;
+      letter-spacing: -.07em;
+      line-height: .8;
+    }
+
+    .last-price { text-align: right; }
+    #last {
+      display: block;
+      margin-top: 4px;
+      font: 900 clamp(2rem, 5vw, 4.5rem)/1 Arial, sans-serif;
+      letter-spacing: -.055em;
+    }
+    #last.up { color: #16823b; }
+    #last.down { color: var(--red); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); }
+    th:last-child, td:last-child { border-right: 0; }
+    th { padding: 13px 18px; background: var(--soft); text-align: right; }
+    td {
+      padding: 20px 18px;
+      font: 700 clamp(1rem, 2vw, 1.55rem)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: right;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
+    th:nth-child(-n+2) { background: #e7f1df; }
+    th:nth-child(n+3) { background: #f3dfda; }
+
+    .side { display: grid; align-content: start; gap: 24px; }
+    .trade-panel { padding: 22px; }
+    .trade-panel.accent { background: var(--ink); color: var(--white); }
+    .trade-panel .section-label { display: block; margin-bottom: 24px; }
+
+    #auth { display: grid; gap: 12px; margin-top: 28px; }
+
+    #auth-token,
+    .bid-field input {
+      width: 100%;
+      padding: 15px;
+      background: var(--white);
+      border: var(--border);
+      border-radius: 0;
+      outline: none;
+    }
+
+    #auth-token:focus,
+    .bid-field input:focus { box-shadow: 5px 5px 0 var(--acid); }
+
+    .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .action {
+      min-height: 52px;
+      padding: 12px 16px;
+      background: var(--acid);
+      border: 2px solid var(--ink);
+      cursor: pointer;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .action:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+    .action.secondary { background: var(--white); }
+    .action:disabled { background: var(--soft); cursor: not-allowed; opacity: .65; }
+
+    #socket-status {
+      display: block;
+      margin-top: 16px;
+      color: var(--soft);
+      font: 700 .9rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    #bid { display: grid; gap: 14px; margin-top: 26px; }
+    #bid-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0; border: 0; }
+    .bid-field { display: grid; gap: 7px; }
+    #bid-note { min-height: 2.6em; margin: 14px 0 0; color: #bbb; line-height: 1.3; }
+
+    .market-note {
+      margin: 0;
+      padding: 18px 22px;
+      border-top: var(--border);
+      color: #555;
+      font-size: .85rem;
+      line-height: 1.45;
+    }
+
+    .ledger { box-shadow: 8px 8px 0 var(--ink); }
+    .ledger-wrap { max-height: 430px; overflow: auto; }
+    .ledger table { min-width: 720px; }
+    .ledger th { position: sticky; top: 0; z-index: 1; text-align: left; }
+    .ledger td {
+      padding: 14px 18px;
+      font-size: .92rem;
+      text-align: left;
+    }
+    .ledger td:nth-child(4),
+    .ledger td:nth-child(5),
+    .ledger th:nth-child(4),
+    .ledger th:nth-child(5) { text-align: right; }
+    .ledger tr.socket-bid { background: var(--acid); }
+    .source-tag {
+      display: inline-block;
+      padding: 5px 8px;
+      border: 2px solid var(--ink);
+      font: 900 .65rem/1 Arial, sans-serif;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 850px) {
+      .page { width: min(100% - 20px, 700px); margin-top: 10px; }
+      .masthead { grid-template-columns: 1fr; gap: 38px; min-height: 0; padding: 24px 20px; }
+      h1 { font-size: clamp(3.6rem, 19vw, 7rem); }
+      .live-stack { min-width: 0; }
+      #instruments { grid-template-columns: 1fr 1fr; }
+      #instruments button { min-height: 92px; border-bottom: var(--border); }
+      #instruments button:nth-child(2n) { border-right: 0; }
+      #instruments button:nth-last-child(-n+2) { border-bottom: 0; }
+      .workspace { grid-template-columns: 1fr; }
+      .market-header { align-items: flex-end; }
+      .ledger { box-shadow: none; }
+    }
+
+    @media (max-width: 500px) {
+      .page { width: 100%; margin: 0; }
+      .masthead, .block, .market, .trade-panel { border-left: 0; border-right: 0; }
+      .masthead, .market { box-shadow: none; }
+      .workspace { gap: 16px; }
+      .block { margin-top: 16px; }
+      .market-header { display: block; }
+      .last-price { margin-top: 28px; text-align: left; }
+      th, td { padding: 12px 8px; }
+      .button-row, #bid-fields { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <h1>Cotations marche <span id="status" class="hint">deconnecte</span></h1>
-  <div id="instruments"></div>
-  <p class="hint">
-    Choisissez un instrument. Le flux SSE vous envoie le carnet de <b>tous</b> les
-    instruments en continu (regardez l'onglet Reseau). En cas de coupure, le navigateur
-    se reconnecte automatiquement et transmet le dernier identifiant recu.
-  </p>
-  <h2 id="titre">-</h2>
-  <table>
-    <thead><tr><th>bid qty</th><th>bid</th><th>ask</th><th>ask qty</th></tr></thead>
-    <tbody id="book"></tbody>
-  </table>
-  <p>dernier prix : <span id="last" class="mono">-</span> (seq <span id="seq">-</span>)</p>
+  <div class="page">
+    <header class="masthead">
+      <div>
+        <span class="eyebrow">Marché temps réel / Paris</span>
+        <h1>Cotations<br />marché.</h1>
+      </div>
+      <div class="live-stack" aria-label="Etat des connexions">
+        <span id="sse-status" class="status">SSE hors ligne</span>
+        <span id="socket-pill" class="status">Trading verrouillé</span>
+      </div>
+    </header>
 
+    <section class="block" aria-labelledby="instruments-title">
+      <div class="block-head">
+        <span class="section-label">01 / Sélection</span>
+        <h2 id="instruments-title">Instruments</h2>
+      </div>
+      <div id="instruments"></div>
+    </section>
+
+    <main class="workspace">
+      <section class="market" aria-labelledby="titre">
+        <header class="market-header">
+          <div>
+            <span class="section-label">Carnet actif</span>
+            <h2 id="titre">—</h2>
+          </div>
+          <div class="last-price">
+            <span class="section-label">Dernier prix / seq <span id="seq">—</span></span>
+            <span id="last">—</span>
+          </div>
+        </header>
+        <table>
+          <thead><tr><th>Qté achat</th><th>Achat</th><th>Vente</th><th>Qté vente</th></tr></thead>
+          <tbody id="book"></tbody>
+        </table>
+        <p class="market-note">
+          Flux continu avec reprise automatique. Les prix sont simulés et le serveur reste
+          la source d'autorité.
+        </p>
+      </section>
+
+      <aside class="side">
+        <section class="trade-panel accent">
+          <span class="section-label">02 / Connexion</span>
+          <h2 class="panel-title">Connectez-vous<br />pour enchérir.</h2>
+          <form id="auth">
+            <label for="auth-token">Token JWT</label>
+            <input
+              id="auth-token"
+              name="token"
+              type="password"
+              placeholder="npm run ws:token"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
+            <div class="button-row">
+              <button class="action" type="submit">Connexion</button>
+              <button class="action secondary" id="auth-disconnect" type="button">Quitter</button>
+            </div>
+          </form>
+          <span id="socket-status">Non authentifié.</span>
+        </section>
+
+        <section class="trade-panel">
+          <span class="section-label">03 / Offre</span>
+          <h2 class="panel-title">Placer un bid.</h2>
+          <form id="bid">
+            <fieldset id="bid-fields" disabled>
+              <label class="bid-field">Prix
+                <input name="price" type="number" min="0.01" step="0.01" placeholder="0.00" required />
+              </label>
+              <label class="bid-field">Quantité
+                <input name="quantity" type="number" min="1" step="1" placeholder="100" required />
+              </label>
+            </fieldset>
+            <button id="bid-submit" class="action" type="submit" disabled>Accès verrouillé</button>
+          </form>
+          <p id="bid-note">Authentifiez-vous pour préparer une offre.</p>
+        </section>
+      </aside>
+    </main>
+
+    <section class="block ledger" aria-labelledby="bids-title">
+      <div class="block-head">
+        <span class="section-label">04 / Socket.IO + SSE</span>
+        <h2 id="bids-title">Flux des bids <span id="bid-count">0</span></h2>
+      </div>
+      <div class="ledger-wrap">
+        <table>
+          <thead>
+            <tr><th>Heure</th><th>Utilisateur</th><th>Instrument</th><th>Prix</th><th>Quantité</th><th>Origine</th></tr>
+          </thead>
+          <tbody id="bid-history">
+            <tr><td colspan="6">En attente des premiers bids…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="http://localhost:3009/socket.io/socket.io.js"></script>
   <script>
     let sel = 'ACME'
     let prev = null
-    const status = document.getElementById('status')
+    const sseStatus = document.getElementById('sse-status')
+    const socketPill = document.getElementById('socket-pill')
+    const socketStatus = document.getElementById('socket-status')
+    const tokenInput = document.getElementById('auth-token')
+    const bidFields = document.getElementById('bid-fields')
+    const bidSubmit = document.getElementById('bid-submit')
+    const bidNote = document.getElementById('bid-note')
+    const bidHistory = document.getElementById('bid-history')
+    const savedToken = sessionStorage.getItem('socket-token') ?? ''
+    const SERVER_ORIGIN = 'http://localhost:3009'
+    let tradingEnabled = false
+    let recentBids = []
 
-    fetch('/api/instruments').then((r) => r.json()).then((list) => {
-      document.getElementById('instruments').innerHTML = list
-        .map((i) => `<button data-s="${i.symbole}">${i.symbole} - ${i.nom}</button>`).join('')
-      document.querySelectorAll('#instruments button').forEach((b) => {
-        b.onclick = () => { sel = b.dataset.s; render(lastState); mark() }
-      })
-      mark()
+    tokenInput.value = savedToken
+
+    const socket = io(SERVER_ORIGIN, { autoConnect: false })
+
+    document.getElementById('auth').onsubmit = (event) => {
+      event.preventDefault()
+      const token = tokenInput.value.trim()
+      if (!token) return
+
+      sessionStorage.setItem('socket-token', token)
+      socket.auth = { token }
+      socketStatus.textContent = 'Connexion au serveur…'
+
+      if (socket.connected) socket.disconnect()
+      socket.connect()
+    }
+
+    document.getElementById('auth-disconnect').onclick = () => {
+      socket.disconnect()
+      socket.auth = {}
+      tokenInput.value = ''
+      sessionStorage.removeItem('socket-token')
+      socketStatus.textContent = 'Non authentifié.'
+      setTradingAccess(false)
+    }
+
+    socket.on('connect', () => {
+      socketStatus.textContent = 'Authentification…'
     })
+
+    socket.on('auth:ready', ({ userId }) => {
+      socketStatus.textContent = `Session ouverte — ${userId}`
+      setTradingAccess(true, userId)
+    })
+
+    socket.on('bid:history', (bids) => ingestBids(bids))
+    socket.on('bid:new', (bid) => ingestBids([bid]))
+
+    socket.on('connect_error', (error) => {
+      socketStatus.textContent = `Accès refusé — ${error.message}`
+      sessionStorage.removeItem('socket-token')
+      setTradingAccess(false, null, true)
+    })
+
+    socket.on('disconnect', () => {
+      socketStatus.textContent = 'Session fermée.'
+      setTradingAccess(false)
+    })
+
+    if (savedToken) {
+      socket.auth = { token: savedToken }
+      socketStatus.textContent = 'Connexion au serveur…'
+      socket.connect()
+    }
+
+    document.getElementById('bid').onsubmit = (event) => {
+      event.preventDefault()
+      if (!tradingEnabled) return
+
+      const form = event.currentTarget
+      const data = new FormData(form)
+      const prix = Number(data.get('price'))
+      const quantite = Number(data.get('quantity'))
+      bidSubmit.disabled = true
+      bidSubmit.textContent = 'Envoi…'
+      bidNote.textContent = `Transmission du bid ${sel} par Socket.IO…`
+
+      socket.timeout(3_000).emit('bid:place', {
+        requestId: crypto.randomUUID(),
+        instrument: sel,
+        prix,
+        quantite,
+      }, (error, result) => {
+        bidSubmit.disabled = !tradingEnabled
+        bidSubmit.textContent = tradingEnabled ? "Valider l'offre" : 'Accès verrouillé'
+
+        if (error) {
+          bidNote.textContent = "Aucun acquittement reçu. L'état du bid est inconnu."
+          return
+        }
+        if (!result.ok) {
+          bidNote.textContent = `Bid refusé — ${result.error}`
+          return
+        }
+
+        form.reset()
+        bidNote.textContent =
+          `Bid ${result.bid.id} accepté. Son impact sera appliqué au prochain tick.`
+        ingestBids([result.bid])
+      })
+    }
+
+    function setTradingAccess(enabled, userId = null, error = false) {
+      tradingEnabled = enabled
+      bidFields.disabled = !enabled
+      bidSubmit.disabled = !enabled
+      bidSubmit.textContent = enabled ? "Valider l'offre" : 'Accès verrouillé'
+      bidNote.textContent = enabled
+        ? `Accès accordé à ${userId}. Vous pouvez préparer une offre.`
+        : 'Authentifiez-vous pour préparer une offre.'
+      socketPill.textContent = enabled ? `Trading / ${userId}` : 'Trading verrouillé'
+      socketPill.classList.toggle('online', enabled)
+      socketPill.classList.toggle('error', error)
+    }
+
+    function ingestBids(bids) {
+      const parId = new Map(recentBids.map((bid) => [bid.id, bid]))
+      bids.forEach((bid) => parId.set(bid.id, bid))
+      recentBids = [...parId.values()]
+        .sort((a, b) => b.creeA - a.creeA)
+        .slice(0, 30)
+      renderBidHistory()
+    }
+
+    function renderBidHistory() {
+      document.getElementById('bid-count').textContent = recentBids.length
+      bidHistory.innerHTML = recentBids.map((bid) => `
+        <tr class="${bid.source === 'socket' ? 'socket-bid' : ''}">
+          <td>${new Date(bid.creeA).toLocaleTimeString('fr-FR')}</td>
+          <td>${escapeHtml(bid.userId)}</td>
+          <td>${escapeHtml(bid.instrument)}</td>
+          <td>${Number(bid.prix).toFixed(2)}</td>
+          <td>${bid.quantite}</td>
+          <td><span class="source-tag">${bid.source === 'socket' ? 'WebSocket' : 'Simulé'}</span></td>
+        </tr>`).join('')
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
+      })[character])
+    }
+
+    fetch(`${SERVER_ORIGIN}/api/instruments`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json()
+      })
+      .then((list) => {
+        document.getElementById('instruments').innerHTML = list
+          .map((i) => `<button data-s="${i.symbole}">${i.symbole}<br>${i.nom}</button>`)
+          .join('')
+        document.querySelectorAll('#instruments button').forEach((button) => {
+          button.onclick = () => {
+            sel = button.dataset.s
+            render(lastState)
+            mark()
+          }
+        })
+        mark()
+      })
+      .catch((error) => {
+        const instruments = document.getElementById('instruments')
+        instruments.textContent = `Instruments indisponibles — ${error.message}`
+      })
+
     function mark() {
       document.querySelectorAll('#instruments button').forEach((b) =>
         b.classList.toggle('sel', b.dataset.s === sel))
     }
 
     let lastState = {}
-    const stream = new EventSource('/api/stream')
-    stream.onopen = () => (status.textContent = 'connecte')
+    const stream = new EventSource(`${SERVER_ORIGIN}/api/stream`)
+    stream.onopen = () => {
+      sseStatus.textContent = 'SSE en direct'
+      sseStatus.classList.add('online')
+      sseStatus.classList.remove('error')
+    }
     stream.onerror = () => {
-      status.textContent = stream.readyState === EventSource.CONNECTING
-        ? 'reconnexion...'
-        : 'deconnecte'
+      const reconnecting = stream.readyState === EventSource.CONNECTING
+      sseStatus.textContent = reconnecting ? 'SSE reconnexion' : 'SSE hors ligne'
+      sseStatus.classList.remove('online')
+      sseStatus.classList.toggle('error', !reconnecting)
     }
     stream.onmessage = (event) => {
       const msg = JSON.parse(event.data)
       if (msg.type === 'state') {
-        lastState = msg.state
+        lastState = msg.state.carnets ?? msg.state
+        if (msg.state.bids) ingestBids(msg.state.bids)
         render(lastState)
       }
     }
     stream.addEventListener('resync-needed', () => {
-      status.textContent = 'resynchronisation...'
+      sseStatus.textContent = 'SSE resynchronisation'
+      sseStatus.classList.remove('online')
     })
 
     function render(state) {
@@ -78,6 +606,8 @@
       last.className = prev == null ? '' : c.dernierPrix >= prev ? 'up' : 'down'
       prev = c.dernierPrix
       document.getElementById('seq').textContent = c.seq
+      const priceInput = document.querySelector('#bid input[name="price"]')
+      if (!priceInput.value) priceInput.placeholder = c.asks[0]?.prix ?? '0.00'
     }
   </script>
 </body>

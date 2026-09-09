@@ -7,7 +7,7 @@ abonnement du client par instrument, graphe temps reel, resynchronisation apres 
 
 ```bash
 npm install
-npm start          # http://localhost:3000
+npm start          # http://localhost:3009
 # ou : docker compose up --build
 ```
 
@@ -16,10 +16,21 @@ npm start          # http://localhost:3000
 | Methode | Route | Description |
 |---|---|---|
 | GET | `/api/instruments` | liste des instruments |
+| GET | `/api/bids` | 30 derniers bids simules ou recus par Socket.IO |
 | GET | `/api/instruments/:sym/book` | carnet courant d'un instrument |
 | GET | `/api/instruments/:sym/history?from=<seq>` | historique des prix depuis un numero de sequence |
 
 Donnees de demonstration : `npm run seed` (4 instruments, 200 ticks rejouables par instrument).
+
+## Bids temps reel
+
+Un utilisateur authentifie peut emettre `bid:place` par Socket.IO avec un `requestId`, un
+instrument, un prix et une quantite. Le serveur acquitte la commande, la deduplique puis diffuse
+`bid:new`. Un utilisateur simule cree egalement un bid toutes les 500 ms.
+
+Les bids agressifs ajoutent une pression haussiere bornee au tick suivant. Le snapshot SSE
+contient les carnets calcules et les 30 bids les plus recents ; Socket.IO permet de voir chaque
+nouveau bid immediatement.
 
 ## Etat de la couche temps reel
 

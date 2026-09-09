@@ -4,6 +4,7 @@ import type {
   FastifyRequest,
 } from 'fastify'
 import type { ServerResponse } from 'node:http'
+import { isAllowedOrigin } from './origin.ts'
 
 interface SseEvent {
   id: number
@@ -12,7 +13,7 @@ interface SseEvent {
 
 const MAX_BUFFER_SIZE = 100
 const HEARTBEAT_INTERVAL_MS = 15_000
-const EVENT_INTERVAL_MS = 1_000
+const EVENT_INTERVAL_MS = 500
 
 export function createSseHandler(
   app: FastifyInstance,
@@ -53,11 +54,18 @@ export function createSseHandler(
     reply.hijack()
 
     const response = reply.raw
-    response.writeHead(200, {
+    const headers: Record<string, string> = {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
-    })
+    }
+    const origin = request.headers.origin
+    if (origin && isAllowedOrigin(origin, request.headers.host)) {
+      headers['Access-Control-Allow-Origin'] = origin
+      headers.Vary = 'Origin'
+    }
+
+    response.writeHead(200, headers)
     response.write('retry: 3000\n\n')
     response.flushHeaders()
 

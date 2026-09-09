@@ -18,6 +18,17 @@ export interface Instrument {
   nom: string
 }
 
+export interface Bid {
+  id: string
+  requestId?: string
+  instrument: string
+  userId: string
+  prix: number
+  quantite: number
+  source: 'simulation' | 'socket'
+  creeA: number
+}
+
 export function creerCarnet(instrument: string, prixInitial: number): CarnetOrdres {
   return {
     instrument,
@@ -42,9 +53,17 @@ function hash01(n: number): number {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296
 }
 
-/** Generateur deterministe : fait osciller le prix autour de sa valeur (marche aleatoire bornee). */
-export function tickSuivant(carnet: CarnetOrdres, graine: number): CarnetOrdres {
-  const delta = (hash01(graine) - 0.5) * 0.5
+/**
+ * Generateur deterministe : oscillation aleatoire + pression bornee des bids recus
+ * depuis le tick precedent.
+ */
+export function tickSuivant(
+  carnet: CarnetOrdres,
+  graine: number,
+  impactBids = 0,
+): CarnetOrdres {
+  const impactBorne = Math.max(0, Math.min(0.4, impactBids))
+  const delta = (hash01(graine) - 0.5) * 0.5 + impactBorne
   const prix = Math.max(1, Number((carnet.dernierPrix + delta).toFixed(2)))
   return {
     ...carnet,
