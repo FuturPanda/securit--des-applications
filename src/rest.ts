@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { createSseHandler } from './realtime/sse.ts'
+import { createJwt, SECRET } from './realtime/ws/security-helpers.ts'
 import type { Store } from './store.ts'
 
 export function registerRoutes(app: FastifyInstance, store: Store): void {
@@ -9,6 +10,23 @@ export function registerRoutes(app: FastifyInstance, store: Store): void {
   }))
 
   app.get('/api/instruments', async () => store.instruments)
+
+  app.post('/api/auth/token', async (request, reply) => {
+    const rawUsername = (request.body as { username?: unknown } | null)?.username
+    const username = typeof rawUsername === 'string' ? rawUsername.trim() : ''
+
+    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(username)) {
+      return reply.code(400).send({
+        error: 'Le nom doit contenir 2 a 32 lettres, chiffres, _ ou -',
+      })
+    }
+
+    return {
+      username,
+      token: createJwt(username, SECRET),
+      expiresIn: '4h',
+    }
+  })
 
   app.get('/api/bids', async () => store.bidsRecents.slice(-30))
 

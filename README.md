@@ -16,6 +16,7 @@ npm start          # http://localhost:3009
 | Methode | Route | Description |
 |---|---|---|
 | GET | `/api/instruments` | liste des instruments |
+| POST | `/api/auth/token` | genere un JWT de demonstration depuis un nom utilisateur |
 | GET | `/api/bids` | 30 derniers bids simules ou recus par Socket.IO |
 | GET | `/api/instruments/:sym/book` | carnet courant d'un instrument |
 | GET | `/api/instruments/:sym/history?from=<seq>` | historique des prix depuis un numero de sequence |

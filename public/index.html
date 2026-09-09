@@ -185,8 +185,10 @@
     .trade-panel.accent { background: var(--ink); color: var(--white); }
     .trade-panel .section-label { display: block; margin-bottom: 24px; }
 
-    #auth { display: grid; gap: 12px; margin-top: 28px; }
+    #identity,
+    #auth { display: grid; gap: 12px; margin-top: 24px; }
 
+    #username,
     #auth-token,
     .bid-field input {
       width: 100%;
@@ -197,8 +199,27 @@
       outline: none;
     }
 
+    #username:focus,
     #auth-token:focus,
     .bid-field input:focus { box-shadow: 5px 5px 0 var(--acid); }
+
+    .auth-divider {
+      margin: 20px -22px 0;
+      padding: 14px 22px;
+      border-top: 2px solid var(--white);
+      border-bottom: 2px solid var(--white);
+      color: var(--acid);
+      font: 900 .72rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    #token-status {
+      min-height: 2.5em;
+      margin: 10px 0 0;
+      color: var(--soft);
+      font: 700 .8rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
 
     .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -334,8 +355,25 @@
         <section class="trade-panel accent">
           <span class="section-label">02 / Connexion</span>
           <h2 class="panel-title">Connectez-vous<br />pour enchérir.</h2>
+          <form id="identity">
+            <label for="username">1. Nom utilisateur → REST</label>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              minlength="2"
+              maxlength="32"
+              pattern="[a-zA-Z0-9_-]+"
+              placeholder="ada_trader"
+              autocomplete="username"
+              required
+            />
+            <button class="action" type="submit">Générer le token</button>
+          </form>
+          <p id="token-status">Le token sera généré par REST et copié dans le presse-papiers.</p>
+          <div class="auth-divider">↓ Copiez le JWT vers Socket.IO</div>
           <form id="auth">
-            <label for="auth-token">Token JWT</label>
+            <label for="auth-token">2. Token JWT → Socket.IO</label>
             <input
               id="auth-token"
               name="token"
@@ -346,7 +384,7 @@
               required
             />
             <div class="button-row">
-              <button class="action" type="submit">Connexion</button>
+              <button class="action" type="submit">Connexion WS</button>
               <button class="action secondary" id="auth-disconnect" type="button">Quitter</button>
             </div>
           </form>
@@ -397,7 +435,9 @@
     const sseStatus = document.getElementById('sse-status')
     const socketPill = document.getElementById('socket-pill')
     const socketStatus = document.getElementById('socket-status')
+    const usernameInput = document.getElementById('username')
     const tokenInput = document.getElementById('auth-token')
+    const tokenStatus = document.getElementById('token-status')
     const bidFields = document.getElementById('bid-fields')
     const bidSubmit = document.getElementById('bid-submit')
     const bidNote = document.getElementById('bid-note')
@@ -410,6 +450,48 @@
     tokenInput.value = savedToken
 
     const socket = io(SERVER_ORIGIN, { autoConnect: false })
+
+    document.getElementById('identity').onsubmit = async (event) => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const button = form.querySelector('button[type="submit"]')
+      const username = usernameInput.value.trim()
+      button.disabled = true
+      button.textContent = 'Génération…'
+      tokenStatus.textContent = 'POST /api/auth/token en cours…'
+
+      try {
+        const response = await fetch(`${SERVER_ORIGIN}/api/auth/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`)
+
+        tokenInput.value = result.token
+        const copied = await copyToken(result.token)
+        tokenStatus.textContent = copied
+          ? `JWT ${result.expiresIn} pour ${result.username} — copié et placé ci-dessous.`
+          : `JWT ${result.expiresIn} généré. Copie automatique refusée : copiez-le ci-dessous.`
+        tokenInput.focus()
+      } catch (error) {
+        tokenStatus.textContent = `Échec REST — ${error.message}`
+      } finally {
+        button.disabled = false
+        button.textContent = 'Générer le token'
+      }
+    }
+
+    async function copyToken(token) {
+      try {
+        await navigator.clipboard.writeText(token)
+        return true
+      } catch {
+        tokenInput.select()
+        return document.execCommand('copy')
+      }
+    }
 
     document.getElementById('auth').onsubmit = (event) => {
       event.preventDefault()

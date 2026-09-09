@@ -2,6 +2,13 @@ import jwt from 'jsonwebtoken'
 
 // Helpers fournis : dans votre template, vous les branchez, vous ne les reecrivez pas.
 
+export const SECRET = 'change-moi' // en production : variable d'environnement
+
+/** Genere le JWT court utilise par le client REST puis par le handshake Socket.IO. */
+export function createJwt(userId: string, secret: string): string {
+  return jwt.sign({ sub: userId }, secret, { expiresIn: '4h' })
+}
+
 export function verifyJwt(token: string | null, secret: string): boolean {
   if (!token) return false
   try {
@@ -45,5 +52,3 @@ export class RateLimiter {
     clearInterval(this.timer)
   }
 }
-
-export const SECRET = 'change-moi' // en production : variable d'environnement
