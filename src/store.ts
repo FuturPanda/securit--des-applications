@@ -13,6 +13,7 @@ export interface Store {
   bidsEnAttente: Map<string, Bid[]>
   bidsParRequete: Map<string, Bid>
   prochainBidId: number
+  ticksDepuisBidSimule: number
 }
 
 export function createStore(): Store {
@@ -26,12 +27,14 @@ export function createStore(): Store {
     bidsEnAttente: new Map(),
     bidsParRequete: new Map(),
     prochainBidId: 1,
+    ticksDepuisBidSimule: 0,
   }
 }
 
 const UTILISATEURS_SIMULES = ['Ada', 'Linus', 'Grace', 'Margaret', 'Alan']
 const MAX_BIDS_RECENTS = 100
 const MAX_REQUETES_MEMORISEES = 1_000
+const TICKS_PAR_BID_SIMULE = 60 // 60 × 500 ms = 30 secondes
 
 export interface NouveauBid {
   requestId?: string
@@ -73,20 +76,27 @@ export function ajouterBid(store: Store, nouveau: NouveauBid): Bid {
   return bid
 }
 
-/** Avance le marche de 500 ms et retourne le bid simule cree pendant ce tick. */
-export function avancer(store: Store): Bid {
+/** Avance le marche de 500 ms et cree occasionnellement un bid simule. */
+export function avancer(store: Store): Bid | null {
   store.graine++
+  store.ticksDepuisBidSimule++
 
-  const instrument = store.instruments[store.graine % store.instruments.length]
-  const carnet = store.carnets.get(instrument.symbole)!
-  const decalagePrix = ((store.graine * 17) % 11 - 3) / 10
-  const bidSimule = ajouterBid(store, {
-    instrument: instrument.symbole,
-    userId: UTILISATEURS_SIMULES[store.graine % UTILISATEURS_SIMULES.length],
-    prix: Number((carnet.dernierPrix + decalagePrix).toFixed(2)),
-    quantite: 25 + ((store.graine * 29) % 276),
-    source: 'simulation',
-  })
+  let bidSimule: Bid | null = null
+  if (store.ticksDepuisBidSimule >= TICKS_PAR_BID_SIMULE) {
+    store.ticksDepuisBidSimule = 0
+    const numeroSimulation = Math.floor(store.graine / TICKS_PAR_BID_SIMULE)
+    const instrument =
+      store.instruments[numeroSimulation % store.instruments.length]
+    const carnet = store.carnets.get(instrument.symbole)!
+    const decalagePrix = ((store.graine * 17) % 11 - 3) / 10
+    bidSimule = ajouterBid(store, {
+      instrument: instrument.symbole,
+      userId: UTILISATEURS_SIMULES[numeroSimulation % UTILISATEURS_SIMULES.length],
+      prix: Number((carnet.dernierPrix + decalagePrix).toFixed(2)),
+      quantite: 25 + ((store.graine * 29) % 276),
+      source: 'simulation',
+    })
+  }
 
   for (const [sym, carnet] of store.carnets) {
     const bids = store.bidsEnAttente.get(sym) ?? []

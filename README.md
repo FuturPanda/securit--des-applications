@@ -26,7 +26,8 @@ Donnees de demonstration : `npm run seed` (4 instruments, 200 ticks rejouables p
 
 Un utilisateur authentifie peut emettre `bid:place` par Socket.IO avec un `requestId`, un
 instrument, un prix et une quantite. Le serveur acquitte la commande, la deduplique puis diffuse
-`bid:new`. Un utilisateur simule cree egalement un bid toutes les 500 ms.
+`bid:new`. Un utilisateur simule cree egalement un bid toutes les 30 secondes, tandis que le
+marche continue d'avancer toutes les 500 ms.
 
 Les bids agressifs ajoutent une pression haussiere bornee au tick suivant. Le snapshot SSE
 contient les carnets calcules et les 30 bids les plus recents ; Socket.IO permet de voir chaque

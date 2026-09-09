@@ -32,5 +32,5 @@ console.log(`couche Socket.IO : auth.token JWT obligatoire`)
 
 setInterval(() => {
   const bidSimule = avancer(store)
-  io.emit('bid:new', bidSimule)
+  if (bidSimule) io.emit('bid:new', bidSimule)
 }, 500)
