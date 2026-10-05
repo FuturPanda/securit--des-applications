@@ -57,6 +57,10 @@ Changer l'instrument dans un onglet : la presence de la room ACME passe a 1.
 Pour un trou de plus de 50 ticks, la verification automatisee teste le retour par instantane
 sans imposer 26 secondes d'attente pendant la soutenance.
 
+## Soutenance
+
+[Conducteur chronométré (15 min), pré-vol et Q&A](docs/presentation/soutenance.md).
+
 ## Sécurité
 
 Le [modèle de menace](docs/security/threat-model.md), le [rapport d'audit](docs/security/rapport-audit.md),
