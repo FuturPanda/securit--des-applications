@@ -4,7 +4,7 @@ Périmètre : le service effectivement lancé par `src/server.ts`, avec quatre i
 un processus Fastify et un état en mémoire. Les cotations sont publiques ; les bids et la
 présence dans les rooms nécessitent un JWT de démonstration. Ni banque réelle, ni Redis,
 ni base persistante, ni contrôle d'identité réel. Les références ci-dessous décrivent le
-code avant les remédiations de sécurité prévues ; vérifier ce document après chaque correctif.
+code actuel ; la preuve du secret initial est conservée dans l'historique Git. Vérifier ce document après chaque correctif.
 
 ## 1. Biens essentiels et événements redoutés (EBIOS, périmètre pédagogique)
 
@@ -75,7 +75,7 @@ nommée comme telle. Les contrôles existants ne prouvent que leur périmètre i
 
 | # | Élément / frontière | STRIDE | Scénario concret et limite du contrôle | Exigence / état | Priorité |
 |---|---|---|---|---|---|
-| S1 | REST token → handshake → bid, B1/B3 | Spoofing | `POST /api/auth/token` signe un `sub` choisi sans preuve d'identité ; de plus `SECRET = 'change-moi'` dans `src/realtime/ws/security-helpers.ts` permet de forger un JWT sans appeler REST. Un JWT signé ne garantit pas qui a choisi ce nom. | Authentifier réellement avant émission ; secret hors dépôt et rotation. **Absent.** | H |
+| S1 | REST token → handshake → bid, B1/B3 | Spoofing | `POST /api/auth/token` signe un `sub` choisi sans preuve d'identité. Au départ, `SECRET = 'change-moi'` permettait aussi de forger un JWT hors REST ; la clé actuelle est générée aléatoirement par processus, ou fournie via `JWT_SECRET`. Un JWT signé ne prouve toujours pas qui a choisi ce nom. | Authentifier réellement avant émission. **Partiel** : clé hors dépôt, identité démo non vérifiée. | H |
 | S2 | Origin du handshake, B3 | Spoofing | `isAllowedOrigin` admet tout `localhost` et l'absence d'Origin ; un script peut en omettre un. | Origin strict pour navigateur, JWT vérifié séparément. **Partiel** : Origin n'est jamais une preuve d'identité. | M |
 | T1 | `bid:place` → marché, B4 | Tampering | Un client choisit prix et quantité pour influer sur le prochain tick. | Valider instrument, prix, quantité et borner l'impact. **Présent** : `validerBid` et `calculerImpactBids` plafonnent l'effet, sans contrôler la légitimité de l'identité. | M |
 | T2 | `requestId` d'un bid, B4 | Tampering | Une chaîne vide passe la validation mais n'est pas mémorisée dans `ajouterBid` ; deux soumissions peuvent créer deux bids. Après redémarrage ou éviction, la déduplication cesse aussi. | Identifiant non vide et déduplication persistante si exigée. **Partiel** : au plus 100 caractères, cache mémoire borné. | M |
@@ -91,7 +91,7 @@ nommée comme telle. Les contrôles existants ne prouvent que leur périmètre i
 
 | Menace | Bien / événement redouté | Source → chemin → impact | Preuve et traitement à vérifier |
 |---|---|---|---|
-| S1 — usurpation | Attribution des bids + intégrité des cotations / ER1 (4) | Visiteur choisit le nom d'autrui sur REST **ou** lit le secret public → JWT valable → bid agressif → attribution trompeuse et pression sur le prix. | `src/rest.ts`, `src/realtime/ws/security-helpers.ts`, `src/realtime/socketio/server.ts`, `src/store.ts`. Sortir le secret du code ne corrige **pas** à lui seul l'émission de tokens sans preuve d'identité. |
+| S1 — usurpation | Attribution des bids + intégrité des cotations / ER1 (4) | Visiteur choisit le nom d'autrui sur REST → JWT valable → bid agressif → attribution trompeuse et pression sur le prix. Historiquement, le secret public donnait un second chemin, maintenant supprimé pour les nouveaux processus. | `src/rest.ts`, `src/realtime/ws/security-helpers.ts`, `src/realtime/socketio/server.ts`, `src/store.ts` et historique Git. Sortir le secret du code ne corrige **pas** l'émission de tokens sans preuve d'identité. |
 | D1 — épuisement SSE | Continuité du flux / ER2 (3) | Client anonyme multiplie les connexions persistantes → sockets et écritures serveur saturés → cotations indisponibles. | `src/realtime/sse.ts` gère un `Set` de clients par instrument sans limite ; tester en environnement local contrôlé, pas sur un tiers. |
 | E1 — jeton expiré sur canal ouvert | Attribution des bids / ER3 (4) | Client obtient un JWT → reste connecté après expiration ou retrait du droit → `bid:place` encore accepté → action non autorisée attribuée au compte. | `src/realtime/ws/security-helpers.ts` donne 4 h, `src/realtime/socketio/server.ts` vérifie en `io.use` seulement ; un test avec jeton à durée courte serait nécessaire pour démontrer l'expiration en direct. |
 

@@ -1,0 +1,19 @@
+rules:
+  - id: rt-literal-jwt-secret
+    message: JWT signing key embedded in source; use JWT_SECRET or a per-process random key.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      cwe: 'CWE-798: Use of Hard-coded Credentials'
+    patterns:
+      - pattern: 'export const SECRET = $VALUE'
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: ^['"].+['"]$
+  - id: rt-open-socketio-origin
+    message: Socket.IO accepts all browser origins.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      cwe: 'CWE-942: Permissive Cross-domain Policy with Untrusted Domains'
+    pattern: 'cors: { origin: "*" }'

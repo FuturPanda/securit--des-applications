@@ -1,8 +1,14 @@
 import jwt from 'jsonwebtoken'
+import { randomBytes } from 'node:crypto'
 
 // Helpers fournis : dans votre template, vous les branchez, vous ne les reecrivez pas.
 
-export const SECRET = 'change-moi' // en production : variable d'environnement
+// A process-local key keeps the classroom demo runnable without committing credentials.
+// Set JWT_SECRET to keep tokens valid across restarts.
+if (process.env.JWT_SECRET && Buffer.byteLength(process.env.JWT_SECRET) < 32) {
+  throw new Error('JWT_SECRET must be at least 32 bytes')
+}
+export const SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex')
 
 /** Genere le JWT court utilise par le client REST puis par le handshake Socket.IO. */
 export function createJwt(userId: string, secret: string): string {

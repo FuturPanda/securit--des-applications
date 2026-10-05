@@ -1,0 +1,119 @@
+name: security
+on: [push, pull_request]
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep ERROR scan
+        id: scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.145.0 \
+            semgrep scan --config=p/ci --config=.semgrep/ --severity ERROR \
+              --metrics=off --sarif --output=semgrep.sarif --error src
+      - name: Publish Semgrep findings
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+      - name: Gate — ERROR findings or scanner failure
+        if: always()
+        run: |
+          test -s semgrep.sarif || { echo '::error::Semgrep produced no SARIF'; exit 1; }
+          count=$(jq '[.runs[].results[]] | length' semgrep.sarif)
+          if [ "$count" -gt 0 ]; then echo "::error::Semgrep ERROR findings: $count"; exit 1; fi
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::Semgrep failed without findings'; exit 1; }
+
+  dependencies:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: npm audit (high and critical block; moderate reported)
+        id: scan
+        continue-on-error: true
+        run: npm audit --audit-level=high --json > audit.json
+      - name: Save dependency report
+        if: always() && hashFiles('audit.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: audit.json
+      - name: Gate — high/critical dependencies or scanner failure
+        if: always()
+        run: |
+          test -s audit.json || { echo '::error::npm audit produced no report'; exit 1; }
+          node -e 'let r=require("./audit.json"); let v=r.metadata?.vulnerabilities; if(!v)process.exit(2); console.log("Moderate:",v.moderate,"High:",v.high,"Critical:",v.critical); process.exit(v.high+v.critical>0?1:0)'
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::npm audit failed without high/critical findings'; exit 1; }
+
+  secrets:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks full history
+        id: scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.24.3 \
+            git --no-banner --redact --report-format json --report-path gitleaks.json .
+      - name: Save secret report
+        if: always() && hashFiles('gitleaks.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks
+          path: gitleaks.json
+      - name: Gate — detected secrets or scanner failure
+        if: always()
+        run: |
+          test -s gitleaks.json || { echo '::error::Gitleaks produced no report'; exit 1; }
+          count=$(jq 'length' gitleaks.json)
+          if [ "$count" -gt 0 ]; then echo "::error::Gitleaks findings: $count"; exit 1; fi
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::Gitleaks failed without findings'; exit 1; }
+
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app image
+        run: docker build --pull -t cotations:ci .
+      - name: Trivy HIGH/CRITICAL scan
+        id: scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: image
+          image-ref: cotations:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: '1'
+      - name: Publish image findings
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+      - name: Gate — HIGH/CRITICAL image findings or scanner failure
+        if: always()
+        run: |
+          test -s trivy-image.sarif || { echo '::error::Trivy produced no SARIF'; exit 1; }
+          count=$(jq '[.runs[].results[]] | length' trivy-image.sarif)
+          if [ "$count" -gt 0 ]; then echo "::error::Trivy HIGH/CRITICAL findings: $count"; exit 1; fi
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::Trivy failed without findings'; exit 1; }

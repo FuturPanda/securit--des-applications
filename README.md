@@ -5,6 +5,10 @@ abonnement du client par instrument, graphe temps reel, resynchronisation apres 
 
 ## Demarrer
 
+Le secret JWT est aléatoire à chaque démarrage (les anciens tokens expirent au redémarrage).
+Pour conserver les tokens entre redémarrages, définir `JWT_SECRET` hors du dépôt.
+Le token REST reste une **identité de démonstration choisie librement**, pas une authentification bancaire.
+
 ```bash
 npm install
 npm start          # http://localhost:3009
@@ -62,7 +66,7 @@ src/rest.ts                routes Fastify
 src/server.ts              point d'entree
 src/seed.ts                donnees de demonstration
 src/realtime/naive-stub.ts       ancien stub, conserve pour comparaison
-src/realtime/security-helpers.ts   verification JWT + Origin + RateLimiter (fourni)
+src/realtime/ws/security-helpers.ts  JWT + RateLimiter (clé aléatoire par processus ou JWT_SECRET)
 src/realtime/convergence.exemple.ts  strategie de convergence adaptee (fourni, a brancher)
 src/realtime/piege.scenario.ts   scenario pedagogique de coupure et reprise
 public/index.html          front de demonstration
