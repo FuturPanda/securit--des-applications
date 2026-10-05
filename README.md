@@ -59,8 +59,9 @@ sans imposer 26 secondes d'attente pendant la soutenance.
 
 ## Sécurité
 
-Le [modèle de menace](docs/security/threat-model.md) et le [pipeline à quatre gates](docs/security/pipeline.md)
-décrivent les risques, les seuils et les runs vert/rouge de la démonstration.
+Le [modèle de menace](docs/security/threat-model.md), le [rapport d'audit](docs/security/rapport-audit.md),
+l'[ADR-2 sécurité](docs/security/ADR-2-priorisation-audit.md) et le [pipeline à quatre gates](docs/security/pipeline.md)
+décrivent les risques, les preuves, les décisions et les runs vert/rouge de la démonstration.
 
 ## Structure
 
