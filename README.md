@@ -57,6 +57,11 @@ Changer l'instrument dans un onglet : la presence de la room ACME passe a 1.
 Pour un trou de plus de 50 ticks, la verification automatisee teste le retour par instantane
 sans imposer 26 secondes d'attente pendant la soutenance.
 
+## Sécurité
+
+Le [modèle de menace](docs/security/threat-model.md) et le [pipeline à quatre gates](docs/security/pipeline.md)
+décrivent les risques, les seuils et les runs vert/rouge de la démonstration.
+
 ## Structure
 
 ```
