@@ -1,0 +1,25 @@
+# Documentation SSI livrée — cotations de marché
+
+Vérification contre le dépôt `main` au 2026-10-05 ; un [x] atteste la **présence d'un artefact réel**, pas l'absence de risque. Vérifier de nouveau après tout changement. Les liens pointent vers les fichiers ; `git ls-files docs/ .github/workflows/` permet de contrôler qu'ils sont versionnés.
+
+- [x] **Modèle de menace** : [DFD, quatre frontières, STRIDE et événements redoutés](./threat-model.md). F1/F3/F4 restent ouverts ; le document ne décrit pas de contrôle fictif.
+- [x] **Rapport d'audit** : [cinq findings prouvés, CWE, CVSS 4.0 et classement](./rapport-audit.md), ancrés au commit `788e35b` ; [script de reproduction local](../../scripts/audit-proof.ts).
+- [x] **ADR sécurité** : [ADR-2 de priorisation](./ADR-2-priorisation-audit.md) ; ne pas le confondre avec [l'ADR-2 de convergence temps réel](../adr/0002-strategie-de-convergence.md).
+- [x] **Registre des traitements** : [T-01 token/présence et T-02 bids](./registre-traitements.md), avec finalités, catégories, destinataires, base légale **candidate** et durées réelles/absentes explicitement indiquées.
+- [x] **Pipeline de sécurité documenté** : [quatre familles, seuils et conduite à tenir](./pipeline.md), workflow [security.yml](../../.github/workflows/security.yml). [Run vert sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37361626287) ; [run rouge de démonstration](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360915654) et [finding Semgrep dans Security, branche `demo/red-sast`](https://github.com/FuturPanda/securit--des-applications/security/code-scanning/2). La PR de régression ne doit pas être fusionnée.
+- [x] **Choix d'architecture temps réel** : [ADR-1 SSE](../adr/0001-technique-de-push.md), [ADR-2 convergence](../adr/0002-strategie-de-convergence.md), [ADR-3 robustesse](../adr/0003-strategie-de-robustesse.md) ; [test de reprise SSE / présence](../../src/realtime/recovery.test.ts).
+- [x] **Mesures effectivement présentes** : JWT signé par clé non committée, contrôle d'origine au handshake, validation des bids, limite 10 messages/s **par socket**, `requestId` seulement tant qu'il est mémorisé en RAM ; voir [code Socket.IO](../../src/realtime/socketio/server.ts) et [limites du modèle de menace](./threat-model.md).
+- [ ] **Plan de remédiation daté** : non produit ; S9 le rend conditionnel, donc aucune action du rapport n'est assignée avec échéance individuelle. Les risques résiduels sont classés et explicitement acceptés/différés dans [l'audit](./rapport-audit.md) et [l'ADR](./ADR-2-priorisation-audit.md), mais ce n'est pas un plan exécutable.
+- [ ] **Notice de confidentialité et base légale validée** : absentes ; les participants ne voient pas encore une notice dédiée avant de saisir un pseudonyme. [Le registre](./registre-traitements.md) nomme une base candidate, non validée par un responsable du traitement/DPO : ne pas annoncer une conformité RGPD acquise.
+- [ ] **Politique de signalement `SECURITY.md` et contact dédié** : absents ; ne pas inventer d'adresse. Conséquence : pas de canal privé explicitement documenté pour signaler une faille sur ce dépôt public ; à définir avec le propriétaire avant exploitation réelle.
+- [ ] **Contrôles de production** (authentification réelle, quota SSE, purge temporelle des bids, TLS et procédure d'incident institutionnelle) : absents ou hors périmètre de la démo locale. Le fait que CI soit vert ne les remplace pas.
+
+## Conduite à tenir pendant la démo et si un job casse
+
+1. Dans **Actions**, ouvrir le step `Gate` rouge, puis le SARIF/JSON correspondant. Un scanner sans rapport est un échec du contrôle, pas un résultat « sans vulnérabilité ». Ne pas retirer un gate pour passer au vert.
+2. Si un vrai secret paraît exposé : ne pas le copier dans une issue publique ; arrêter l'utilisation de cette clé, la remplacer hors dépôt, invalider les jetons si possible, conserver une preuve expurgée. Le littéral `change-moi` de la PR est **factice** et la PR ne doit jamais être fusionnée.
+3. Si le service local tombe pendant la présentation : arrêter la tentative après 2 min (règle des grilles), montrer le dernier run vert/rouge et les preuves sauvegardées ; ne pas prétendre à une démo live réussie.
+
+## Points de conformité encore ouverts
+
+Responsable du traitement et éventuel DPO non confirmés ; aucune durée temporelle de purge pour les bids ; pseudonymes affichés publiquement via `/api/bids` ; absence de notice et de canal privé de signalement ; journaux réseau/contrats de prestataires à revérifier si l'app est hébergée. **NIS2 ou obligations sectorielles bancaires non revendiquées** pour cette simulation locale : toute mise en service réelle demanderait une nouvelle qualification.

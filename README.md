@@ -62,6 +62,9 @@ sans imposer 26 secondes d'attente pendant la soutenance.
 Le [modèle de menace](docs/security/threat-model.md), le [rapport d'audit](docs/security/rapport-audit.md),
 l'[ADR-2 sécurité](docs/security/ADR-2-priorisation-audit.md) et le [pipeline à quatre gates](docs/security/pipeline.md)
 décrivent les risques, les preuves, les décisions et les runs vert/rouge de la démonstration.
+Le [registre des traitements](docs/security/registre-traitements.md) et la
+[checklist SSI](docs/security/doc-ssi-checklist.md) indiquent ce qui est réellement livré
+et les points de conformité encore ouverts.
 
 ## Structure
 
