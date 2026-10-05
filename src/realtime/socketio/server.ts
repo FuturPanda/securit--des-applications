@@ -24,9 +24,11 @@ interface ServerToClientEvents {
   'auth:ready': (payload: { userId: string }) => void
   'bid:history': (bids: Bid[]) => void
   'bid:new': (bid: Bid) => void
+  presence: (payload: { instrument: string; count: number }) => void
 }
 
 interface ClientToServerEvents {
+  watch: (instrument: string, ack: (result: { ok: boolean }) => void) => void
   'bid:place': (
     payload: PlaceBidPayload,
     ack?: (result: PlaceBidAck) => void,
@@ -37,6 +39,7 @@ interface InterServerEvents {}
 
 interface SocketData {
   userId: string
+  watching?: string
 }
 
 export function startSocketIoServer(httpServer: HttpServer, store: Store) {
@@ -56,6 +59,21 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
       )
     },
   })
+
+  const viewers = new Map<string, Set<string>>()
+  const departures = new Map<string, ReturnType<typeof setTimeout>>()
+  const room = (sym: string) => `instrument:${sym}`
+  const key = (sym: string, user: string) => `${sym}:${user}`
+  const announce = (sym: string) => io.to(room(sym)).emit('presence', {
+    instrument: sym, count: viewers.get(sym)?.size ?? 0,
+  })
+  const stillWatching = (sym: string, user: string) =>
+    [...io.of('/').sockets.values()].some((s) => s.data.watching === sym && s.data.userId === user)
+  const remove = (sym: string, user: string) => {
+    if (stillWatching(sym, user)) return
+    viewers.get(sym)?.delete(user)
+    announce(sym)
+  }
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token
@@ -78,6 +96,30 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
 
     socket.emit('auth:ready', { userId: socket.data.userId })
     socket.emit('bid:history', store.bidsRecents.slice(-30))
+
+    socket.on('watch', (raw, ack) => {
+      const sym = typeof raw === 'string' ? raw.toUpperCase() : ''
+      if (!store.carnets.has(sym) || !limiter.hit()) {
+        ack?.({ ok: false })
+        return
+      }
+      const previous = socket.data.watching
+      if (previous && previous !== sym) {
+        socket.leave(room(previous))
+        socket.data.watching = undefined
+        remove(previous, socket.data.userId)
+      }
+      socket.join(room(sym))
+      socket.data.watching = sym
+      const pending = key(sym, socket.data.userId)
+      clearTimeout(departures.get(pending))
+      departures.delete(pending)
+      const group = viewers.get(sym) ?? new Set<string>()
+      group.add(socket.data.userId)
+      viewers.set(sym, group)
+      ack?.({ ok: true })
+      announce(sym)
+    })
 
     socket.on('bid:place', (payload, ack) => {
       if (!limiter.hit()) {
@@ -107,9 +149,22 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
       if (!dejaTraite) io.emit('bid:new', bid)
     })
 
-    socket.on('disconnect', () => limiter.stop())
+    socket.on('disconnect', () => {
+      limiter.stop()
+      const sym = socket.data.watching
+      if (!sym || stillWatching(sym, socket.data.userId)) return
+      const pending = key(sym, socket.data.userId)
+      clearTimeout(departures.get(pending))
+      departures.set(pending, setTimeout(() => {
+        departures.delete(pending)
+        remove(sym, socket.data.userId)
+      }, 5_000))
+    })
   })
 
+  httpServer.on('close', () => {
+    for (const timer of departures.values()) clearTimeout(timer)
+  })
   return io
 }
 

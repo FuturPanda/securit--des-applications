@@ -257,6 +257,7 @@
       font-size: .85rem;
       line-height: 1.45;
     }
+    #replayed ol { max-height: 140px; overflow: auto; margin: 6px 0; padding-left: 24px; }
 
     .ledger { box-shadow: 8px 8px 0 var(--ink); }
     .ledger-wrap { max-height: 430px; overflow: auto; }
@@ -346,8 +347,13 @@
           <tbody id="book"></tbody>
         </table>
         <p class="market-note">
-          Flux continu avec reprise automatique. Les prix sont simulés et le serveur reste
-          la source d'autorité.
+          <span id="recovery-status" role="status">En attente du premier instantané.</span>
+          <span id="presence-status">Spectateurs authentifiés : —</span><br />
+          <button type="button" id="demo-cut">Couper le flux SSE 3 s (démo)</button>
+          <div id="replayed" hidden>
+            Cotations rejouées (instrument sélectionné) : <ol id="replayed-list"></ol>
+          </div>
+          Les prix sont simulés ; la reprise couvre les coupures réseau, pas un redémarrage serveur.
         </p>
       </section>
 
@@ -450,6 +456,14 @@
     tokenInput.value = savedToken
 
     const socket = io(SERVER_ORIGIN, { autoConnect: false })
+    const recoveryStatus = document.getElementById('recovery-status')
+    const replayed = document.getElementById('replayed')
+    const replayedList = document.getElementById('replayed-list')
+    const presenceStatus = document.getElementById('presence-status')
+    let stream = null
+    let lastSeq = 0
+    let replayRemaining = 0
+    let interrupted = false
 
     document.getElementById('identity').onsubmit = async (event) => {
       event.preventDefault()
@@ -522,10 +536,14 @@
     socket.on('auth:ready', ({ userId }) => {
       socketStatus.textContent = `Session ouverte — ${userId}`
       setTradingAccess(true, userId)
+      watchSelected()
     })
 
     socket.on('bid:history', (bids) => ingestBids(bids))
     socket.on('bid:new', (bid) => ingestBids([bid]))
+    socket.on('presence', ({ instrument, count }) => {
+      if (instrument === sel) presenceStatus.textContent = `Spectateurs authentifiés : ${count}`
+    })
 
     socket.on('connect_error', (error) => {
       socketStatus.textContent = `Accès refusé — ${error.message}`
@@ -536,6 +554,7 @@
     socket.on('disconnect', () => {
       socketStatus.textContent = 'Session fermée.'
       setTradingAccess(false)
+      presenceStatus.textContent = 'Spectateurs authentifiés : —'
     })
 
     if (savedToken) {
@@ -633,12 +652,22 @@
           .join('')
         document.querySelectorAll('#instruments button').forEach((button) => {
           button.onclick = () => {
+            if (sel === button.dataset.s) return
             sel = button.dataset.s
-            render(lastState)
+            lastSeq = 0
+            replayRemaining = 0
+            replayed.hidden = true
+            replayedList.replaceChildren()
+            recoveryStatus.textContent = 'En attente du premier instantané.'
+            prev = null
+            presenceStatus.textContent = 'Spectateurs authentifiés : —'
+            watchSelected()
+            openStream()
             mark()
           }
         })
         mark()
+        openStream()
       })
       .catch((error) => {
         const instruments = document.getElementById('instruments')
@@ -650,31 +679,79 @@
         b.classList.toggle('sel', b.dataset.s === sel))
     }
 
-    let lastState = {}
-    const stream = new EventSource(`${SERVER_ORIGIN}/api/stream`)
-    stream.onopen = () => {
-      sseStatus.textContent = 'SSE en direct'
-      sseStatus.classList.add('online')
-      sseStatus.classList.remove('error')
+    function watchSelected() {
+      if (!socket.connected || !tradingEnabled) return
+      socket.emit('watch', sel, ({ ok }) => {
+        if (!ok) presenceStatus.textContent = 'Présence indisponible'
+      })
     }
-    stream.onerror = () => {
-      const reconnecting = stream.readyState === EventSource.CONNECTING
-      sseStatus.textContent = reconnecting ? 'SSE reconnexion' : 'SSE hors ligne'
-      sseStatus.classList.remove('online')
-      sseStatus.classList.toggle('error', !reconnecting)
-    }
-    stream.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
-      if (msg.type === 'state') {
-        lastState = msg.state.carnets ?? msg.state
-        if (msg.state.bids) ingestBids(msg.state.bids)
-        render(lastState)
+
+    function openStream(from = null) {
+      stream?.close()
+      const url = `${SERVER_ORIGIN}/api/stream?instrument=${encodeURIComponent(sel)}`
+        + (from === null ? '' : `&from=${from}`)
+      stream = new EventSource(url)
+      stream.onopen = () => {
+        sseStatus.textContent = 'SSE en direct'
+        sseStatus.classList.add('online')
+        sseStatus.classList.remove('error')
       }
+      stream.onerror = () => {
+        sseStatus.textContent = 'SSE reconnexion'
+        sseStatus.classList.remove('online')
+        sseStatus.classList.add('error')
+      }
+      stream.addEventListener('recovery', (event) => {
+        const result = JSON.parse(event.data)
+        replayRemaining = result.type === 'replay' ? result.count : 0
+        replayedList.replaceChildren()
+        replayed.hidden = replayRemaining === 0
+        recoveryStatus.textContent = result.type === 'replay'
+          ? `Rejeu de ${result.count} cotations manquées.`
+          : 'Buffer dépassé : nouvel instantané.'
+      })
+      stream.addEventListener('snapshot', (event) => {
+        const carnet = JSON.parse(event.data)
+        replayRemaining = 0
+        replayed.hidden = true
+        replayedList.replaceChildren()
+        lastSeq = carnet.seq
+        recoveryStatus.textContent = recoveryStatus.textContent.includes('Buffer dépassé')
+          ? 'Buffer dépassé : nouvel instantané reçu.'
+          : `Instantané reçu (seq ${lastSeq}).`
+        render({ [sel]: carnet })
+      })
+      stream.addEventListener('delta', (event) => {
+        const { seq, carnet } = JSON.parse(event.data)
+        if (seq <= lastSeq) return
+        if (seq !== lastSeq + 1) {
+          recoveryStatus.textContent = `Trou détecté après seq ${lastSeq} : reprise.`
+          openStream(lastSeq)
+          return
+        }
+        lastSeq = seq
+        if (replayRemaining > 0) {
+          const item = document.createElement('li')
+          item.textContent = `${sel} · seq ${seq} · prix ${carnet.dernierPrix}`
+          replayedList.append(item)
+          replayRemaining--
+        }
+        render({ [sel]: carnet })
+      })
     }
-    stream.addEventListener('resync-needed', () => {
-      sseStatus.textContent = 'SSE resynchronisation'
+
+    document.getElementById('demo-cut').onclick = () => {
+      if (!stream || interrupted) return
+      interrupted = true
+      stream.close()
+      sseStatus.textContent = 'SSE coupé (démo)'
       sseStatus.classList.remove('online')
-    })
+      recoveryStatus.textContent = `Coupure après seq ${lastSeq}…`
+      setTimeout(() => {
+        openStream(lastSeq)
+        interrupted = false
+      }, 3_000)
+    }
 
     function render(state) {
       const c = state[sel]

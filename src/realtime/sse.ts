@@ -1,58 +1,40 @@
-import type {
-  FastifyInstance,
-  FastifyReply,
-  FastifyRequest,
-} from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { ServerResponse } from 'node:http'
+import type { CarnetOrdres } from '../domain.ts'
+import type { Store } from '../store.ts'
+import { SequencedInstrument, type Delta } from './convergence.exemple.ts'
 import { isAllowedOrigin } from './origin.ts'
 
-interface SseEvent {
-  id: number
-  data: string
-}
+const HEARTBEAT_MS = 15_000
 
-const MAX_BUFFER_SIZE = 100
-const HEARTBEAT_INTERVAL_MS = 15_000
-const EVENT_INTERVAL_MS = 500
-
-export function createSseHandler(
-  app: FastifyInstance,
-  getState: () => unknown,
-) {
-  const events: SseEvent[] = []
-  const clients = new Set<ServerResponse>()
-  let nextEventId = 1
-
-  const record = (data: string): SseEvent => {
-    const event = { id: nextEventId++, data }
-    events.push(event)
-
-    if (events.length > MAX_BUFFER_SIZE) {
-      events.shift()
-    }
-
-    return event
-  }
-
-  const producer = setInterval(() => {
-    const data = JSON.stringify({ type: 'state', state: getState() })
-    broadcast(clients, record(data))
-  }, EVENT_INTERVAL_MS)
+export function createSseHandler(app: FastifyInstance, store: Store) {
+  const instruments = new Map(
+    [...store.carnets].map(([sym, carnet]) => [sym, new SequencedInstrument(carnet)]),
+  )
+  const clients = new Map<string, Set<ServerResponse>>()
 
   app.addHook('onClose', (_instance, done) => {
-    clearInterval(producer)
-
-    for (const client of clients) {
-      client.end()
-    }
-
-    clients.clear()
+    for (const group of clients.values()) for (const client of group) client.end()
     done()
   })
 
-  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    reply.hijack()
+  function publish(carnet: CarnetOrdres): void {
+    const delta = instruments.get(carnet.instrument)?.push(carnet)
+    if (!delta) return
+    for (const client of clients.get(carnet.instrument) ?? []) {
+      send(client, 'delta', delta, delta.seq)
+    }
+  }
 
+  async function handler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const sym = (request.query as { instrument?: string }).instrument?.toUpperCase()
+    const instrument = sym && instruments.get(sym)
+    if (!instrument) {
+      reply.code(404).send({ error: 'instrument inconnu' })
+      return
+    }
+
+    reply.hijack()
     const response = reply.raw
     const headers: Record<string, string> = {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -64,80 +46,42 @@ export function createSseHandler(
       headers['Access-Control-Allow-Origin'] = origin
       headers.Vary = 'Origin'
     }
-
     response.writeHead(200, headers)
-    response.write('retry: 3000\n\n')
+    response.write('retry: 1000\n\n')
     response.flushHeaders()
 
-    const lastEventId = parseLastEventId(request.headers['last-event-id'])
-    const oldestBufferedId = events[0]?.id
-
-    if (
-      oldestBufferedId !== undefined &&
-      lastEventId > 0 &&
-      lastEventId < oldestBufferedId - 1
-    ) {
-      response.write(
-        'event: resync-needed\n' +
-          'data: buffer dépassé, rechargez un instantané complet\n\n',
-      )
+    const rawId = request.headers['last-event-id'] ?? (request.query as { from?: string }).from
+    const lastSeq = typeof rawId === 'string' ? Number(rawId) : NaN
+    if (!Number.isSafeInteger(lastSeq) || lastSeq < 0 || lastSeq > instrument.seqCourant) {
+      const snapshot = instrument.resync(-1)
+      if (snapshot.type === 'snapshot') send(response, 'snapshot', snapshot.carnet, snapshot.carnet.seq)
     } else {
-      for (const event of events) {
-        if (event.id > lastEventId) {
-          send(response, event)
-        }
+      const recovery = instrument.resync(lastSeq)
+      if (recovery.type === 'snapshot') {
+        send(response, 'recovery', { type: 'snapshot' })
+        send(response, 'snapshot', recovery.carnet, recovery.carnet.seq)
+      } else {
+        send(response, 'recovery', { type: 'replay', count: recovery.deltas.length })
+        for (const delta of recovery.deltas) send(response, 'delta', delta, delta.seq)
       }
     }
 
-    clients.add(response)
-
+    const group = clients.get(sym!) ?? new Set<ServerResponse>()
+    group.add(response)
+    clients.set(sym!, group)
     const heartbeat = setInterval(() => {
-      if (!response.destroyed && !response.writableEnded) {
-        response.write(': heartbeat\n\n')
-      }
-    }, HEARTBEAT_INTERVAL_MS)
-
+      if (!response.destroyed && !response.writableEnded) response.write(': heartbeat\n\n')
+    }, HEARTBEAT_MS)
     response.on('close', () => {
       clearInterval(heartbeat)
-      clients.delete(response)
+      group.delete(response)
     })
   }
+
+  return { handler, publish }
 }
 
-function parseLastEventId(header: string | string[] | undefined): number {
-  const rawValue = Array.isArray(header) ? header[0] : header
-  const value = Number(rawValue ?? 0)
-  return Number.isFinite(value) ? value : 0
-}
-
-function send(
-  response: ServerResponse,
-  event: SseEvent,
-  eventName?: string,
-): void {
+function send(response: ServerResponse, event: string, data: Delta | CarnetOrdres | object, id?: number) {
   if (response.destroyed || response.writableEnded) return
-
-  response.write(`id: ${event.id}\n`)
-
-  if (eventName) {
-    response.write(`event: ${eventName}\n`)
-  }
-
-  // SSE requires one `data:` prefix per line.
-  for (const line of event.data.split(/\r?\n/)) {
-    response.write(`data: ${line}\n`)
-  }
-
-  response.write('\n')
-}
-
-function broadcast(clients: Set<ServerResponse>, event: SseEvent): void {
-  for (const client of clients) {
-    if (client.destroyed || client.writableEnded) {
-      clients.delete(client)
-      continue
-    }
-
-    send(client, event)
-  }
+  response.write(`${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }

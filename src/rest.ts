@@ -2,12 +2,10 @@ import type { FastifyInstance } from 'fastify'
 import { createSseHandler } from './realtime/sse.ts'
 import { createJwt, SECRET } from './realtime/ws/security-helpers.ts'
 import type { Store } from './store.ts'
+import type { CarnetOrdres } from './domain.ts'
 
-export function registerRoutes(app: FastifyInstance, store: Store): void {
-  const sseHandler = createSseHandler(app, () => ({
-    carnets: Object.fromEntries(store.carnets),
-    bids: store.bidsRecents.slice(-30),
-  }))
+export function registerRoutes(app: FastifyInstance, store: Store): (carnet: CarnetOrdres) => void {
+  const sse = createSseHandler(app, store)
 
   app.get('/api/instruments', async () => store.instruments)
 
@@ -45,5 +43,6 @@ export function registerRoutes(app: FastifyInstance, store: Store): void {
     return hist.filter((c) => c.seq >= from).map((c) => ({ seq: c.seq, prix: c.dernierPrix }))
   })
 
-  app.get('/api/stream', sseHandler)
+  app.get('/api/stream', sse.handler)
+  return sse.publish
 }

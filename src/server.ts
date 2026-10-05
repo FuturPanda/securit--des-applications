@@ -18,7 +18,7 @@ await app.register(fastifyCors, {
   origin: (origin, done) => done(null, isAllowedOrigin(origin)),
 })
 await app.register(fastifyStatic, { root: join(HERE, '..', 'public') })
-registerRoutes(app, store)
+const publish = registerRoutes(app, store)
 
 const io = startSocketIoServer(app.server, store)
 app.addHook('preClose', (done) => {
@@ -32,5 +32,6 @@ console.log(`couche Socket.IO : auth.token JWT obligatoire`)
 
 setInterval(() => {
   const bidSimule = avancer(store)
+  for (const carnet of store.carnets.values()) publish(carnet)
   if (bidSimule) io.emit('bid:new', bidSimule)
 }, 500)

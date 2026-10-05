@@ -2,10 +2,7 @@
 
 ## Statut
 
-Propose a l'etape 2.
-
-La decision sera reevaluee a l'etape 4 lors de l'ajout des abonnements par
-instrument.
+Accepte : reevalue apres l'ajout des abonnements et du canal d'offres.
 
 ## Contexte
 
@@ -40,13 +37,15 @@ Nous retenons Server-Sent Events pour le flux principal de cotations.
 SSE correspond au sens naturel du flux, du serveur vers le client, et s'integre
 directement au protocole HTTP utilise par l'application.
 
-Chaque evenement recoit un identifiant. Le serveur conserve un buffer borne des
-100 derniers evenements. Lors d'une reconnexion, le navigateur envoie
-automatiquement `Last-Event-ID`, ce qui permet au serveur de rejouer les
-evenements manques.
+Un flux SSE par instrument selectionne transporte les cotations numerotees. Le serveur
+conserve les 50 dernieres mises a jour de chaque instrument en memoire. `EventSource`
+reconnecte automatiquement avec `Last-Event-ID` : les mises a jour disponibles sont
+rejouees dans l'ordre ; apres expiration du buffer, le serveur envoie un instantane
+complet. Un nouvel abonnement recoit aussi un instantane.
 
-Si l'identifiant demande est plus ancien que le buffer, le serveur emet un
-evenement `resync-needed` afin que le client recharge un etat complet.
+Socket.IO reste un canal separe, authentifie par JWT : commandes de bid avec acquittement,
+rooms `instrument:<symbole>` pour la presence des spectateurs authentifies. Les prix
+ne transitent pas par Socket.IO.
 
 Un heartbeat est envoye regulierement pour maintenir la connexion et detecter
 les clients deconnectes.
@@ -81,8 +80,9 @@ Limites :
 - les donnees envoyees par le client necessitent une requete HTTP separee ;
 - le buffer est conserve en memoire et disparait au redemarrage du serveur ;
 - le buffer n'est pas partage entre plusieurs instances du serveur ;
-- le serveur diffuse encore tous les instruments a tous les clients ;
-- un depassement du buffer necessite une resynchronisation complete.
+- un depassement du buffer remplace le rejeu par un instantane : on converge, sans
+  pretendre avoir observe chaque tick ;
+- apres redemarrage, l'etat et le buffer en memoire ne sont pas durables.
 
-L'ajout futur d'abonnements, d'acquittements ou d'autres echanges
-bidirectionnels pourra conduire a remplacer SSE par WebSocket ou Socket.IO.
+Les abonnements aux cotations restent unidirectionnels ; seul le canal de commandes
+et de presence est bidirectionnel.
