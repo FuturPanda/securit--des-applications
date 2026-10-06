@@ -15,6 +15,30 @@ npm start          # http://localhost:3009
 # ou : docker compose up --build
 ```
 
+## Essai local à deux instances (fan-out, pas marché partagé)
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
+docker compose -f compose.scale.yml up --build
+# ouvrir http://localhost:3009 dans deux profils de navigateur séparés
+```
+
+HAProxy attribue un cookie `SERVER` par navigateur pour conserver toutes les requêtes
+Engine.IO (y compris polling et upgrade WebSocket) sur la même instance. Les deux
+instances partagent la clé JWT ; l'adaptateur Redis relaie les événements Socket.IO
+(`bid:new`, rooms) entre elles. Contrôle du cookie sticky **et** du relais à travers le proxy :
+`npx tsx scripts/scale-smoke.ts` (avec Compose lancé). Test direct de l'adaptateur avec
+un Redis local : `REDIS_URL=redis://127.0.0.1:6379 npx tsx src/realtime/redis.test.ts`.
+
+**Limite importante** : Redis ne partage ici **ni** le marché, **ni** les bids, **ni**
+les numéros/buffers SSE, **ni** le comptage de présence avec sa grâce de 5 s.
+Chaque instance fait avancer son propre marché ; un bid relayé n'agit que sur le carnet
+de l'instance qui l'a reçu. Le proxy ne rend pas ces états cohérents. Ce mode est une
+preuve de sticky routing et de fan-out, **pas une solution de cotations horizontales
+correcte**. Conserver `docker compose up --build` pour la démo fiable et l'ADR-3 ;
+il faudrait un écrivain unique ou un état transactionnel partagé et une reprise
+SSE globale avant de présenter ce mode comme une mise à l'échelle du marché.
+
 ## API REST
 
 | Methode | Route | Description |

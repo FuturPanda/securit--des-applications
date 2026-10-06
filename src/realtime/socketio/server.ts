@@ -1,5 +1,7 @@
 import type { Server as HttpServer } from 'node:http'
 import { Server } from 'socket.io'
+import { createAdapter } from '@socket.io/redis-adapter'
+import { createClient } from 'redis'
 import {
   RateLimiter,
   SECRET,
@@ -166,6 +168,22 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
     for (const timer of departures.values()) clearTimeout(timer)
   })
   return io
+}
+
+export async function attachRedisAdapter(io: ReturnType<typeof startSocketIoServer>, url: string) {
+  const pub = createClient({ url })
+  const sub = pub.duplicate()
+  pub.on('error', (error) => console.error('Redis publisher:', error))
+  sub.on('error', (error) => console.error('Redis subscriber:', error))
+  try {
+    await Promise.all([pub.connect(), sub.connect()])
+  } catch (error) {
+    pub.destroy()
+    sub.destroy()
+    throw error
+  }
+  io.adapter(createAdapter(pub, sub, { key: 'cotations-marche' }))
+  return async () => { await Promise.all([pub.quit(), sub.quit()]) }
 }
 
 function validerBid(

@@ -1,0 +1,38 @@
+# Local fan-out experiment; the market and replay buffers remain process-local.
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      retries: 10
+
+  app-a:
+    image: cotations:scale
+    build: .
+    environment:
+      PORT: "3009"
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a shared random value of at least 32 bytes}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  app-b:
+    image: cotations:scale
+    build: .
+    environment:
+      PORT: "3009"
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a shared random value of at least 32 bytes}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  proxy:
+    image: haproxy:3.1-alpine
+    ports:
+      - "3009:3009"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on: [app-a, app-b]

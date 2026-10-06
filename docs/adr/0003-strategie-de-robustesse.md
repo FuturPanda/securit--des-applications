@@ -25,3 +25,11 @@ Une coupure courte est rattrapable en direct avec deux navigateurs. Les depassem
 buffer convergent vers le dernier etat, sans preuve que chaque tick a ete affiche. Un
 redemarrage remet a zero l'etat et les buffers en memoire : cette solution ne garantit
 ni persistance des bids, ni haute disponibilite bancaire.
+
+## Essai de fan-out distinct (non retenu comme strategie de convergence)
+
+`compose.scale.yml` lance deux instances avec HAProxy sticky par cookie et adaptateur
+Socket.IO Redis : les evenements `bid:new` passent entre instances. **Ce montage ne
+remplace pas la decision mono-instance** : carnet, simulation, idempotence, buffers SSE
+et presence restent locaux et peuvent diverger. Il faut partager ou centraliser ces
+etats avant de qualifier le montage de mise a l'echelle du marche.
