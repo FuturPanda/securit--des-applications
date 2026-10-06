@@ -2,16 +2,15 @@
 import assert from 'node:assert/strict'
 import { io } from 'socket.io-client'
 
-const base = 'http://127.0.0.1:3009'
-const cookies: string[] = []
-for (let i = 0; i < 20 && cookies.length < 2; i++) {
-  const response = await fetch(`${base}/api/instruments`, { headers: { Connection: 'close' } })
-  const cookie = response.headers.get('set-cookie')?.split(';')[0]
-  assert.ok(cookie?.startsWith('SERVER='))
-  if (!cookies.includes(cookie)) cookies.push(cookie)
-  if (cookies.length < 2) await new Promise((resolve) => setTimeout(resolve, 250))
-}
-assert.equal(cookies.length, 2)
+const bases = ['http://localhost:3009', 'http://127.0.0.1:3009']
+const workers = await Promise.all(bases.map(async (base, index) => {
+  const response = await fetch(`${base}/api/instruments`)
+  assert.equal(response.status, 200)
+  const worker = response.headers.get('x-demo-worker')
+  assert.equal(worker, index === 0 ? 'a' : 'b')
+  return worker
+}))
+const base = bases[0]!
 async function token(username: string): Promise<string> {
   const response = await fetch(`${base}/api/auth/token`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }),
@@ -21,9 +20,9 @@ async function token(username: string): Promise<string> {
 }
 const [ada, linus] = await Promise.all([token('ada'), token('linus')])
 const sockets = [
-  io(base, { transports: ['polling'], reconnection: false, auth: { token: ada }, extraHeaders: { Cookie: cookies[0] } }),
-  io(base, { transports: ['polling'], reconnection: false, auth: { token: ada }, extraHeaders: { Cookie: cookies[1] } }),
-  io(base, { transports: ['polling'], reconnection: false, auth: { token: linus }, extraHeaders: { Cookie: cookies[1] } }),
+  io(base, { transports: ['polling'], reconnection: false, auth: { token: ada } }),
+  io(bases[1], { transports: ['polling'], reconnection: false, auth: { token: ada } }),
+  io(bases[1], { transports: ['polling'], reconnection: false, auth: { token: linus } }),
 ]
 const waitCount = (index: number, expected: number, timeout = 10_000) => new Promise<void>((resolve, reject) => {
   const socket = sockets[index]!
@@ -58,7 +57,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 4_000))
   assert.equal(early, false, '5-second grace must retain the viewer')
   await departed
-  console.log(`OK: ${cookies.join(' / ')} report 2 distinct users, deduplicate tabs and honor grace`)
+  console.log(`OK: workers ${workers.join(' / ')} report 2 distinct users, deduplicate tabs and honor grace`)
 } finally {
   sockets.forEach((socket) => socket.disconnect())
 }

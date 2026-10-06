@@ -1,21 +1,18 @@
 // With compose.scale.yml running, prove a full-history replay on either worker.
 import assert from 'node:assert/strict'
 
-const base = 'http://127.0.0.1:3009'
-const cookies = new Set<string>()
-for (let i = 0; i < 20 && cookies.size < 2; i++) {
-  const response = await fetch(`${base}/api/instruments`, { headers: { Connection: 'close' } })
+const bases = ['http://localhost:3009', 'http://127.0.0.1:3009']
+await Promise.all(bases.map(async (base, index) => {
+  const response = await fetch(`${base}/api/instruments`)
   assert.equal(response.status, 200)
-  cookies.add(response.headers.get('set-cookie')!.split(';')[0]!)
-  if (cookies.size < 2) await new Promise((resolve) => setTimeout(resolve, 250))
-}
-assert.equal(cookies.size, 2)
+  assert.equal(response.headers.get('x-demo-worker'), index === 0 ? 'a' : 'b')
+}))
 
-async function firstDelta(cookie: string) {
+async function firstDelta(base: string) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10_000)
   const response = await fetch(`${base}/api/stream?instrument=ACME&from=0`, {
-    headers: { Cookie: cookie }, signal: controller.signal,
+    signal: controller.signal,
   })
   assert.equal(response.status, 200)
   const reader = response.body!.getReader()
@@ -35,6 +32,6 @@ async function firstDelta(cookie: string) {
     await reader.cancel().catch(() => {})
   }
 }
-const [first, second] = await Promise.all([...cookies].map(firstDelta))
+const [first, second] = await Promise.all(bases.map(firstDelta))
 assert.deepEqual(first, second)
 console.log('OK: both workers replay identical first event from Redis')

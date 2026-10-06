@@ -20,11 +20,15 @@ npm start          # http://localhost:3009
 ```bash
 export JWT_SECRET="$(openssl rand -hex 32)"
 docker compose -f compose.scale.yml up --build
-# ouvrir http://localhost:3009 dans deux profils de navigateur séparés
+# autre terminal, macOS + Safari : deux onglets épinglés aux workers a et b
+mise run demo:two-workers
 ```
 
-HAProxy attribue un cookie `SERVER` par navigateur pour conserver toutes les requêtes
-Engine.IO (y compris polling et upgrade WebSocket) sur la même instance. Les deux
+HAProxy épingle `localhost:3009` à app-a et `127.0.0.1:3009` à app-b :
+chaque onglet garde son worker pour toutes les requêtes Engine.IO (polling et WebSocket).
+Les deux origines isolent aussi leurs cookies et leur `sessionStorage` (identités de
+démo distinctes). La tâche vérifie l'en-tête `X-Demo-Worker` des deux réponses
+**avant** d'ouvrir Safari. Les autres noms d'hôte conservent le routage sticky par cookie. Les deux
 instances partagent la clé JWT ; Redis conserve l'état canonique du marché et des bids,
 un journal `cotations:events` (ticks et bids), et tous les carnets numérotés par instrument
 pour le rejeu SSE (`cotations:prices:<sym>`). Les mises à jour concurrentes passent par
