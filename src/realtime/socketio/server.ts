@@ -10,6 +10,7 @@ import {
 import { isAllowedOrigin } from '../origin.ts'
 import type { Bid } from '../../domain.ts'
 import { ajouterBid, type Store } from '../../store.ts'
+import type { RedisMarket } from '../redis-market.ts'
 
 interface PlaceBidPayload {
   requestId: string
@@ -44,7 +45,7 @@ interface SocketData {
   watching?: string
 }
 
-export function startSocketIoServer(httpServer: HttpServer, store: Store) {
+export function startSocketIoServer(httpServer: HttpServer, store: Store, market?: RedisMarket) {
   const io = new Server<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -76,6 +77,26 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
     viewers.get(sym)?.delete(user)
     announce(sym)
   }
+  const lastCounts = new Map<string, number>()
+  const announceShared = async (sym: string, force = false) => {
+    const count = await market!.viewerCount(sym)
+    if (force || lastCounts.get(sym) !== count) {
+      lastCounts.set(sym, count)
+      io.to(room(sym)).emit('presence', { instrument: sym, count })
+    }
+  }
+  if (market) {
+    // ponytail: polling avoids a separate Redis pub/sub presence protocol; use notifications if room counts grow.
+    const pulse = setInterval(async () => {
+      try {
+        for (const socket of io.of('/').sockets.values()) {
+          if (socket.data.watching) await market.watch(socket.data.watching, socket.data.userId, socket.id)
+        }
+        for (const sym of store.carnets.keys()) await announceShared(sym)
+      } catch (error) { console.error('Redis presence pulse:', error) }
+    }, 1_000)
+    httpServer.on('close', () => clearInterval(pulse))
+  }
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token
@@ -95,14 +116,43 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
 
   io.on('connection', (socket) => {
     const limiter = new RateLimiter(10)
+    let watching = Promise.resolve()
 
     socket.emit('auth:ready', { userId: socket.data.userId })
-    socket.emit('bid:history', store.bidsRecents.slice(-30))
+    if (market) {
+      void market.read().then((state) => socket.emit('bid:history', state.bidsRecents.slice(-30)))
+        .catch((error) => { console.error('Redis bid history:', error); socket.disconnect(true) })
+    } else socket.emit('bid:history', store.bidsRecents.slice(-30))
 
     socket.on('watch', (raw, ack) => {
       const sym = typeof raw === 'string' ? raw.toUpperCase() : ''
       if (!store.carnets.has(sym) || !limiter.hit()) {
         ack?.({ ok: false })
+        return
+      }
+      if (market) {
+        let accepted = false
+        watching = watching.then(async () => {
+          const previous = socket.data.watching
+          await market.watch(sym, socket.data.userId, socket.id)
+          if (!socket.connected) {
+            await market.leave(sym, socket.data.userId, socket.id)
+            return
+          }
+          if (previous && previous !== sym) {
+            await market.leave(previous, socket.data.userId, socket.id, false)
+            socket.leave(room(previous))
+          }
+          socket.join(room(sym))
+          socket.data.watching = sym
+          accepted = true
+          ack?.({ ok: true })
+          if (previous && previous !== sym) await announceShared(previous, true)
+          await announceShared(sym, true)
+        }).catch((error) => {
+          console.error('Redis watch:', error)
+          if (!accepted) ack?.({ ok: false })
+        })
         return
       }
       const previous = socket.data.watching
@@ -123,7 +173,7 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
       announce(sym)
     })
 
-    socket.on('bid:place', (payload, ack) => {
+    socket.on('bid:place', async (payload, ack) => {
       if (!limiter.hit()) {
         ack?.({ ok: false, error: 'Trop de messages' })
         socket.disconnect(true)
@@ -136,23 +186,39 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
         return
       }
 
-      const cleRequete = `${socket.data.userId}:${payload.requestId}`
-      const dejaTraite = store.bidsParRequete.has(cleRequete)
-      const bid = ajouterBid(store, {
+      const nouveau = {
         requestId: payload.requestId,
         instrument: validation.instrument,
         userId: socket.data.userId,
         prix: payload.prix,
         quantite: payload.quantite,
-        source: 'socket',
-      })
-
-      ack?.({ ok: true, bid })
-      if (!dejaTraite) io.emit('bid:new', bid)
+        source: 'socket' as const,
+      }
+      try {
+        const existing = store.bidsParRequete.has(`${socket.data.userId}:${payload.requestId}`)
+        const { bid, created } = market
+          ? await market.bid(nouveau)
+          : { bid: ajouterBid(store, nouveau), created: !existing }
+        ack?.({ ok: true, bid })
+        if (created) io.emit('bid:new', bid)
+      } catch (error) {
+        console.error('Bid persistence:', error)
+        ack?.({ ok: false, error: 'Stockage indisponible' })
+      }
     })
 
     socket.on('disconnect', () => {
       limiter.stop()
+      if (market) {
+        watching = watching.then(async () => {
+          const sym = socket.data.watching
+          if (sym) {
+            await market.leave(sym, socket.data.userId, socket.id)
+            await announceShared(sym, true)
+          }
+        }).catch((error) => console.error('Redis disconnect:', error))
+        return
+      }
       const sym = socket.data.watching
       if (!sym || stillWatching(sym, socket.data.userId)) return
       const pending = key(sym, socket.data.userId)

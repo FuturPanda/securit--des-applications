@@ -15,29 +15,48 @@ npm start          # http://localhost:3009
 # ou : docker compose up --build
 ```
 
-## Essai local à deux instances (fan-out, pas marché partagé)
+## Essai local à deux instances avec journal Redis persistant
 
 ```bash
 export JWT_SECRET="$(openssl rand -hex 32)"
 docker compose -f compose.scale.yml up --build
-# ouvrir http://localhost:3009 dans deux profils de navigateur séparés
+# autre terminal, macOS + Safari : deux onglets épinglés aux workers a et b
+mise run demo:two-workers
 ```
 
-HAProxy attribue un cookie `SERVER` par navigateur pour conserver toutes les requêtes
-Engine.IO (y compris polling et upgrade WebSocket) sur la même instance. Les deux
-instances partagent la clé JWT ; l'adaptateur Redis relaie les événements Socket.IO
-(`bid:new`, rooms) entre elles. Contrôle du cookie sticky **et** du relais à travers le proxy :
-`npx tsx scripts/scale-smoke.ts` (avec Compose lancé). Test direct de l'adaptateur avec
-un Redis local : `REDIS_URL=redis://127.0.0.1:6379 npx tsx src/realtime/redis.test.ts`.
+HAProxy épingle `localhost:3009` à app-a et `127.0.0.1:3009` à app-b :
+chaque onglet garde son worker pour toutes les requêtes Engine.IO (polling et WebSocket).
+Les deux origines isolent aussi leurs cookies et leur `sessionStorage` (identités de
+démo distinctes). La tâche vérifie l'en-tête `X-Demo-Worker` des deux réponses
+**avant** d'ouvrir Safari. Les autres noms d'hôte conservent le routage sticky par cookie. Les deux
+instances partagent la clé JWT ; Redis conserve l'état canonique du marché et des bids,
+un journal `cotations:events` (ticks et bids), et tous les carnets numérotés par instrument
+pour le rejeu SSE (`cotations:prices:<sym>`). Les mises à jour concurrentes passent par
+`WATCH`/`MULTI` ; un seul tick est accepté par tranche de 500 ms. `from=0` ou
+`Last-Event-ID: 0` rejoue toutes les cotations **générées depuis la création du volume** ;
+sans curseur, SSE commence par l'instantané courant. Le client Socket.IO garde un
+historique d'affichage de 30 bids, mais le journal Redis conserve tous les bids.
 
-**Limite importante** : Redis ne partage ici **ni** le marché, **ni** les bids, **ni**
-les numéros/buffers SSE, **ni** le comptage de présence avec sa grâce de 5 s.
-Chaque instance fait avancer son propre marché ; un bid relayé n'agit que sur le carnet
-de l'instance qui l'a reçu. Le proxy ne rend pas ces états cohérents. Ce mode est une
-preuve de sticky routing et de fan-out, **pas une solution de cotations horizontales
-correcte**. Conserver `docker compose up --build` pour la démo fiable et l'ADR-3 ;
-il faudrait un écrivain unique ou un état transactionnel partagé et une reprise
-SSE globale avant de présenter ce mode comme une mise à l'échelle du marché.
+Redis utilise un volume Docker, AOF `appendfsync always` et `noeviction` : le journal
+survit au redémarrage des conteneurs et n'est jamais taillé par l'application. Test :
+`npx tsx scripts/scale-smoke.ts` puis `npx tsx scripts/redis-replay-smoke.ts` ;
+pour voir les événements bruts :
+`docker compose -f compose.scale.yml exec redis redis-cli XRANGE cotations:events - + COUNT 10`.
+**Ne pas utiliser `down -v`** si l'on veut garder le journal.
+
+La présence est partagée par des baux Redis par socket/instrument : chaque worker
+compte les **pseudonymes uniques** encore valides et diffuse le résultat aux deux
+workers. Le bail est renouvelé chaque seconde, expire six secondes après le dernier
+renouvellement en cas de crash, ou cinq secondes après une déconnexion normale.
+`npx tsx scripts/presence-smoke.ts` vérifie deux workers, plusieurs onglets du même
+pseudonyme et la grâce. Le journal permanent concerne ticks et bids, **pas** la présence.
+
+**Limites** : croissance disque sans limite (et échec des écritures si disque plein),
+pas de réplication Redis/sauvegarde hors du volume, pas de garantie contre une panne
+de disque ou la perte du volume. La présence est éventuellement cohérente (sondage
+chaque seconde), pas instantanée ni résistante à une panne de Redis. Les pseudonymes
+des bids sont conservés sans durée de purge ; ne pas utiliser de vraies identités.
+Le mode mono-instance `docker compose up --build` reste la démo de référence.
 
 ## API REST
 

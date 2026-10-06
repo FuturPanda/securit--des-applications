@@ -12,6 +12,7 @@ export interface Store {
   bidsParRequete: Map<string, Bid>
   prochainBidId: number
   ticksDepuisBidSimule: number
+  lastTickAt?: number
 }
 
 export function createStore(): Store {
@@ -43,7 +44,7 @@ export interface NouveauBid {
   source: Bid['source']
 }
 
-export function ajouterBid(store: Store, nouveau: NouveauBid): Bid {
+export function ajouterBid(store: Store, nouveau: NouveauBid, keepAll = false): Bid {
   const cleRequete = nouveau.requestId
     ? `${nouveau.userId}:${nouveau.requestId}`
     : null
@@ -65,7 +66,7 @@ export function ajouterBid(store: Store, nouveau: NouveauBid): Bid {
 
   if (cleRequete) {
     store.bidsParRequete.set(cleRequete, bid)
-    if (store.bidsParRequete.size > MAX_REQUETES_MEMORISEES) {
+    if (!keepAll && store.bidsParRequete.size > MAX_REQUETES_MEMORISEES) {
       const premiereCle = store.bidsParRequete.keys().next().value
       if (premiereCle !== undefined) store.bidsParRequete.delete(premiereCle)
     }
