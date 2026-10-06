@@ -1,6 +1,6 @@
 # Registre des traitements — démonstrateur de cotations
 
-État au 2026-10-05 : application locale, quatre instruments simulés, dépôt de code public ; **pas de base de données ni de déploiement public du service**. Un pseudonyme choisi par une personne peut malgré tout la rendre identifiable : le caractère « démo » ne dispense pas de documenter les traitements. Ce registre décrit le code, pas une conformité RGPD certifiée.
+État au 2026-10-05 : application locale, quatre instruments simulés, dépôt de code public ; **pas de déploiement public du service**. Le mode mono-instance par défaut n'a pas de base de données ; le mode expérimental `compose.scale.yml` utilise Redis sur volume local. Un pseudonyme choisi par une personne peut malgré tout la rendre identifiable : le caractère « démo » ne dispense pas de documenter les traitements. Ce registre décrit le code, pas une conformité RGPD certifiée.
 
 - **Responsable du traitement** : à confirmer avec le responsable pédagogique : étudiant opérant la démo ou établissement si celui-ci détermine les finalités et moyens. Aucune décision juridique institutionnelle n'a été fournie.
 - **DPO / contact RGPD** : statut et coordonnées à confirmer auprès de l'établissement ; ne pas inventer une personne.
@@ -25,8 +25,8 @@
 | Base légale | Candidate : intérêt légitime art. 6(1)(f) pour la démonstration pédagogique, **à valider** par le responsable et l'établissement. |
 | Personnes / données | Pseudonyme `userId`, `requestId` (si fourni), instrument, prix, quantité, source, horodatage `creeA` et ID de bid ; les utilisateurs simulés Ada/Linus/etc. ne sont pas des personnes réelles. |
 | Source / destinataires | `bid:place` via Socket.IO authentifié ; événement `bid:new` envoyé à tous les clients Socket.IO, historique des **30 derniers** également accessible à **toute personne** par `GET /api/bids`, sans JWT. Ne pas saisir de vrais noms ni de données confidentielles. Le SSE des cotations ne contient **pas** d'identifiant de bid ni de pseudonyme. |
-| Conservation réelle | `bidsRecents` : maximum **100 entrées** en mémoire, avec affichage des 30 derniers ; `bidsParRequete` : maximum **1 000 clés** de déduplication en mémoire ; `bidsEnAttente` vidé à chaque tick de **500 ms**. **Aucune durée en jours/heures ni purge temporelle définie** : si le processus reste actif sans nouveaux bids, ces enregistrements restent jusqu'au redémarrage. Le navigateur affiche au plus 30 bids récents et les perd à la fermeture/recharge sauf rechargement par le serveur. |
-| Mesures / manques | Validation de l'instrument, du prix et de la quantité, ack, limite par socket ; `requestId` vide échappe à la déduplication (F5), et aucune écriture durable. `GET /api/bids` et l'événement global rendent les pseudonymes publics / visibles à tous les connectés (STRIDE I1). |
+| Conservation réelle | Mode mono-instance : `bidsRecents` : maximum **100 entrées** en mémoire ; `bidsParRequete` : maximum **1 000 clés** ; `bidsEnAttente` vidé à chaque tick. Mode Redis expérimental : affichage et cache récents toujours bornés, mais **tous les bids, pseudonymes et requestId sont conservés sans limite dans `cotations:events` et l'état de déduplication**, avec AOF sur volume Docker. Ni purge, ni durée définie, ni effacement par personne : ne pas utiliser de vraies identités et ne pas présenter ce mode comme conforme. |
+| Mesures / manques | Validation de l'instrument, du prix et de la quantité, ack, limite par socket ; `requestId` vide échappe à la déduplication (F5), et aucune écriture durable en mode mono-instance (écriture Redis AOF en mode expérimental). `GET /api/bids` et l'événement global rendent les pseudonymes publics / visibles à tous les connectés (STRIDE I1). |
 
 ## Flux non personnels et sous-traitance
 

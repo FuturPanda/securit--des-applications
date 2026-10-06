@@ -10,6 +10,7 @@ import {
 import { isAllowedOrigin } from '../origin.ts'
 import type { Bid } from '../../domain.ts'
 import { ajouterBid, type Store } from '../../store.ts'
+import type { RedisMarket } from '../redis-market.ts'
 
 interface PlaceBidPayload {
   requestId: string
@@ -44,7 +45,7 @@ interface SocketData {
   watching?: string
 }
 
-export function startSocketIoServer(httpServer: HttpServer, store: Store) {
+export function startSocketIoServer(httpServer: HttpServer, store: Store, market?: RedisMarket) {
   const io = new Server<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -97,7 +98,10 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
     const limiter = new RateLimiter(10)
 
     socket.emit('auth:ready', { userId: socket.data.userId })
-    socket.emit('bid:history', store.bidsRecents.slice(-30))
+    if (market) {
+      void market.read().then((state) => socket.emit('bid:history', state.bidsRecents.slice(-30)))
+        .catch((error) => { console.error('Redis bid history:', error); socket.disconnect(true) })
+    } else socket.emit('bid:history', store.bidsRecents.slice(-30))
 
     socket.on('watch', (raw, ack) => {
       const sym = typeof raw === 'string' ? raw.toUpperCase() : ''
@@ -123,7 +127,7 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
       announce(sym)
     })
 
-    socket.on('bid:place', (payload, ack) => {
+    socket.on('bid:place', async (payload, ack) => {
       if (!limiter.hit()) {
         ack?.({ ok: false, error: 'Trop de messages' })
         socket.disconnect(true)
@@ -136,19 +140,25 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store) {
         return
       }
 
-      const cleRequete = `${socket.data.userId}:${payload.requestId}`
-      const dejaTraite = store.bidsParRequete.has(cleRequete)
-      const bid = ajouterBid(store, {
+      const nouveau = {
         requestId: payload.requestId,
         instrument: validation.instrument,
         userId: socket.data.userId,
         prix: payload.prix,
         quantite: payload.quantite,
-        source: 'socket',
-      })
-
-      ack?.({ ok: true, bid })
-      if (!dejaTraite) io.emit('bid:new', bid)
+        source: 'socket' as const,
+      }
+      try {
+        const existing = store.bidsParRequete.has(`${socket.data.userId}:${payload.requestId}`)
+        const { bid, created } = market
+          ? await market.bid(nouveau)
+          : { bid: ajouterBid(store, nouveau), created: !existing }
+        ack?.({ ok: true, bid })
+        if (created) io.emit('bid:new', bid)
+      } catch (error) {
+        console.error('Bid persistence:', error)
+        ack?.({ ok: false, error: 'Stockage indisponible' })
+      }
     })
 
     socket.on('disconnect', () => {

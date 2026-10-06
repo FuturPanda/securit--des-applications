@@ -15,7 +15,7 @@ npm start          # http://localhost:3009
 # ou : docker compose up --build
 ```
 
-## Essai local à deux instances (fan-out, pas marché partagé)
+## Essai local à deux instances avec journal Redis persistant
 
 ```bash
 export JWT_SECRET="$(openssl rand -hex 32)"
@@ -25,19 +25,27 @@ docker compose -f compose.scale.yml up --build
 
 HAProxy attribue un cookie `SERVER` par navigateur pour conserver toutes les requêtes
 Engine.IO (y compris polling et upgrade WebSocket) sur la même instance. Les deux
-instances partagent la clé JWT ; l'adaptateur Redis relaie les événements Socket.IO
-(`bid:new`, rooms) entre elles. Contrôle du cookie sticky **et** du relais à travers le proxy :
-`npx tsx scripts/scale-smoke.ts` (avec Compose lancé). Test direct de l'adaptateur avec
-un Redis local : `REDIS_URL=redis://127.0.0.1:6379 npx tsx src/realtime/redis.test.ts`.
+instances partagent la clé JWT ; Redis conserve l'état canonique du marché et des bids,
+un journal `cotations:events` (ticks et bids), et tous les carnets numérotés par instrument
+pour le rejeu SSE (`cotations:prices:<sym>`). Les mises à jour concurrentes passent par
+`WATCH`/`MULTI` ; un seul tick est accepté par tranche de 500 ms. `from=0` ou
+`Last-Event-ID: 0` rejoue toutes les cotations **générées depuis la création du volume** ;
+sans curseur, SSE commence par l'instantané courant. Le client Socket.IO garde un
+historique d'affichage de 30 bids, mais le journal Redis conserve tous les bids.
 
-**Limite importante** : Redis ne partage ici **ni** le marché, **ni** les bids, **ni**
-les numéros/buffers SSE, **ni** le comptage de présence avec sa grâce de 5 s.
-Chaque instance fait avancer son propre marché ; un bid relayé n'agit que sur le carnet
-de l'instance qui l'a reçu. Le proxy ne rend pas ces états cohérents. Ce mode est une
-preuve de sticky routing et de fan-out, **pas une solution de cotations horizontales
-correcte**. Conserver `docker compose up --build` pour la démo fiable et l'ADR-3 ;
-il faudrait un écrivain unique ou un état transactionnel partagé et une reprise
-SSE globale avant de présenter ce mode comme une mise à l'échelle du marché.
+Redis utilise un volume Docker, AOF `appendfsync always` et `noeviction` : le journal
+survit au redémarrage des conteneurs et n'est jamais taillé par l'application. Test :
+`npx tsx scripts/scale-smoke.ts` puis `npx tsx scripts/redis-replay-smoke.ts` ;
+pour voir les événements bruts :
+`docker compose -f compose.scale.yml exec redis redis-cli XRANGE cotations:events - + COUNT 10`.
+**Ne pas utiliser `down -v`** si l'on veut garder le journal.
+
+**Limites** : croissance disque sans limite (et échec des écritures si disque plein),
+pas de réplication Redis/sauvegarde hors du volume, pas de garantie contre une panne
+de disque ou la perte du volume. La présence et sa grâce de 5 s restent locales aux
+workers : le comptage multi-instance n'est pas cohérent. Les pseudonymes des bids sont
+conservés sans durée de purge ; ne pas utiliser de vraies identités. Le mode mono-instance
+`docker compose up --build` reste la démo de référence.
 
 ## API REST
 

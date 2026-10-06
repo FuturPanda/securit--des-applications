@@ -2,6 +2,9 @@
 services:
   redis:
     image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes', --appendfsync, always, --maxmemory-policy, noeviction]
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 2s
@@ -36,3 +39,6 @@ services:
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on: [app-a, app-b]
+
+volumes:
+  redis-data:

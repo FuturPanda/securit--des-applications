@@ -29,7 +29,10 @@ ni persistance des bids, ni haute disponibilite bancaire.
 ## Essai de fan-out distinct (non retenu comme strategie de convergence)
 
 `compose.scale.yml` lance deux instances avec HAProxy sticky par cookie et adaptateur
-Socket.IO Redis : les evenements `bid:new` passent entre instances. **Ce montage ne
-remplace pas la decision mono-instance** : carnet, simulation, idempotence, buffers SSE
-et presence restent locaux et peuvent diverger. Il faut partager ou centraliser ces
-etats avant de qualifier le montage de mise a l'echelle du marche.
+Socket.IO Redis. Redis est l'autorite pour les carnets, bids, sequences et le journal
+integral des evenements (AOF sur volume). SSE relit les cotations numerotees depuis Redis
+sans limite de 50 ticks ; les deux workers acceptent un seul tick par fenetre de 500 ms
+via transaction optimiste. **Ce montage ne remplace pas la decision mono-instance** :
+le comptage de presence et sa grace restent locaux ; aucune purge, replication ou
+sauvegarde externe n'est fournie. Le rejeu illimite implique stockage illimite, dont
+des pseudonymes de bids ; ne pas utiliser de vraies identites.
