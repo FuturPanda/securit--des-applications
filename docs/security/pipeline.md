@@ -12,6 +12,25 @@ la décision est rouge. Un rapport absent ou une panne de scanner fait aussi éc
 | OSV Scanner (dépendances) | `package-lock.json`, job indépendant `osv-scanner` | **toute** vulnérabilité signalée ou scanner en panne | `osv.json` dans les artefacts Actions ; seuil volontairement plus strict que npm/Aube |
 | Gitleaks (secrets) | historique Git complet | au moins un secret détecté | `gitleaks.json` dans les artefacts Actions ; le faible secret de démonstration initial n'est pas détecté par entropie |
 | Trivy (image) | image construite depuis ce Dockerfile | au moins un high/critical | SARIF `trivy-image` dans Security → Code scanning |
+| Trivy SBOM (inventaire) | image construite depuis ce Dockerfile, job `sbom` | SBOM absente, non CycloneDX ou sans composant | `sbom.cdx.json` dans les artefacts Actions ; inventaire des composants, **pas** une détection de vulnérabilité |
+| ZAP baseline (DAST) | application démarrée par `docker compose`, job `dast` | au moins une alerte de risque **High** ou scanner en panne | `zap.json` et `zap.html` dans les artefacts Actions ; alertes Medium/Low affichées sans bloquer |
+
+## Portée réelle du DAST et de la SBOM
+
+Le job `dast` lance l'image avec `docker compose up -d --build`, attend une réponse sur
+`/api/instruments`, puis exécute un **ZAP baseline** (passif, 2 minutes d'exploration) contre
+`http://127.0.0.1:3009`. Il couvre surtout les en-têtes HTTP et les routes REST atteignables
+par exploration. Il **n'exerce ni SSE ni Socket.IO**, et ne détecte aucun de nos findings
+métier : pseudonyme choisi librement (F1), jeton expiré sur socket ouvert (F4) ou `requestId`
+vide (F5) restent prouvés par `scripts/audit-proof.ts`. Un baseline vert ne signifie donc pas
+« application testée dynamiquement » ; il n'y a ni scan actif, ni authentification rejouée,
+ni test de charge.
+
+La SBOM CycloneDX produite par Trivy inventorie les composants de l'image livrée, système
+et npm. C'est une **liste de composants**, utile pour répondre à « sommes-nous affectés par
+cette CVE ? » ; la décision de blocage sur vulnérabilité reste celle des jobs `dependencies`,
+`aube-audit`, `osv-scanner` et `image`. Le gate `sbom` échoue seulement si l'inventaire est
+absent, mal formé ou vide. La SBOM n'est ni signée ni publiée hors des artefacts du run.
 
 ## Télécharger les SARIF
 
