@@ -8,6 +8,8 @@ la décision est rouge. Un rapport absent ou une panne de scanner fait aussi éc
 |---|---|---|---|
 | Semgrep (SAST) | `src/`, règles `p/ci` + `.semgrep/` | au moins un ERROR | SARIF `semgrep` dans Security → Code scanning |
 | npm audit (dépendances) | `package-lock.json` | au moins un high/critical ; moderate affiché | `audit.json` dans les artefacts Actions |
+| Aube audit (dépendances) | `package-lock.json`, job indépendant `aube-audit` | au moins un high/critical ou scanner en panne | `aube-audit.json` dans les artefacts Actions ; l'audit des vulnérabilités est distinct de `paranoid` à l'installation |
+| OSV Scanner (dépendances) | `package-lock.json`, job indépendant `osv-scanner` | **toute** vulnérabilité signalée ou scanner en panne | `osv.json` dans les artefacts Actions ; seuil volontairement plus strict que npm/Aube |
 | Gitleaks (secrets) | historique Git complet | au moins un secret détecté | `gitleaks.json` dans les artefacts Actions ; le faible secret de démonstration initial n'est pas détecté par entropie |
 | Trivy (image) | image construite depuis ce Dockerfile | au moins un high/critical | SARIF `trivy-image` dans Security → Code scanning |
 
@@ -26,8 +28,8 @@ export manuel est réservé au `main`.
 
 ## Rejouer la démonstration
 
-- [Exécution verte sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360435594) : les quatre jobs passent ; `npm audit` ne remonte plus de vulnérabilité à la date du run.
-- [PR de régression, à ne pas fusionner](https://github.com/FuturPanda/securit--des-applications/pull/15) : sa branche contient une **clé JWT volontairement littérale**. Le [run rouge](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360915654) échoue dans `Gate — ERROR findings or scanner failure` du job `sast`, après l'upload SARIF. Les autres familles restent vertes.
+- [Exécution verte historique sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360435594) : les **quatre jobs d'origine** passent ; `npm audit` ne remonte plus de vulnérabilité à la date du run. Cette preuve est antérieure à l'ajout des deux jobs indépendants Aube et OSV : vérifier leur propre run avant de les annoncer verts.
+- [PR de régression, à ne pas fusionner](https://github.com/FuturPanda/securit--des-applications/pull/15) : sa branche contient une **clé JWT volontairement littérale**. Le [run rouge historique](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360915654) échoue dans `Gate — ERROR findings or scanner failure` du job `sast`, après l'upload SARIF. Les trois autres jobs d'origine restent verts sur ce run ; il précède Aube/OSV.
 - [Finding Semgrep dans Security](https://github.com/FuturPanda/securit--des-applications/security/code-scanning/2) : sélectionner la branche `demo/red-sast` si la vue par défaut n'affiche que les alertes de `main`. Le résultat est sur la branche de démo, **pas** sur `main`.
 
 Après la présentation, fermer la PR et supprimer la branche de régression. Sur `main`, la clé est

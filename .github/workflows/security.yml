@@ -55,6 +55,55 @@ jobs:
           node -e 'let r=require("./audit.json"); let v=r.metadata?.vulnerabilities; if(!v)process.exit(2); console.log("Moderate:",v.moderate,"High:",v.high,"Critical:",v.critical); process.exit(v.high+v.critical>0?1:0)'
           test '${{ steps.scan.outcome }}' = success || { echo '::error::npm audit failed without high/critical findings'; exit 1; }
 
+  aube-audit:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: aube
+      - name: Aube audit (high and critical block)
+        id: scan
+        continue-on-error: true
+        run: aube audit --audit-level high --json > aube-audit.json
+      - name: Save Aube report
+        if: always() && hashFiles('aube-audit.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: aube-audit
+          path: aube-audit.json
+      - name: Gate — high/critical Aube advisories or scanner failure
+        if: always()
+        run: |
+          test -s aube-audit.json || { echo '::error::Aube produced no report'; exit 1; }
+          jq -e '.metadata.vulnerabilities as $v | ($v.high | type == "number") and ($v.critical | type == "number") and ($v.high + $v.critical == 0)' aube-audit.json
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::Aube audit failed'; exit 1; }
+
+  osv-scanner:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - name: OSV scan of committed npm lockfile (any finding blocks)
+        id: scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src ghcr.io/google/osv-scanner:v2.5.1 \
+            scan --format=json source --lockfile=package-lock.json > osv.json
+      - name: Save OSV report
+        if: always() && hashFiles('osv.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scanner
+          path: osv.json
+      - name: Gate — OSV findings or scanner failure
+        if: always()
+        run: |
+          test -s osv.json || { echo '::error::OSV produced no report'; exit 1; }
+          jq -e '(.results // [] | type == "array")' osv.json
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::OSV found advisories or failed to scan'; exit 1; }
+
   secrets:
     runs-on: ubuntu-latest
     permissions: { contents: read }
