@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { registerRoutes } from './rest.ts'
 import { createStore, avancer } from './store.ts'
-import { startSocketIoServer } from './realtime/socketio/server.ts'
+import { attachRedisAdapter, startSocketIoServer } from './realtime/socketio/server.ts'
 import { isAllowedOrigin } from './realtime/origin.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -21,6 +21,11 @@ await app.register(fastifyStatic, { root: join(HERE, '..', 'public') })
 const publish = registerRoutes(app, store)
 
 const io = startSocketIoServer(app.server, store)
+if (process.env.REDIS_URL) {
+  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required with REDIS_URL')
+  const closeRedis = await attachRedisAdapter(io, process.env.REDIS_URL)
+  app.addHook('onClose', async () => { await closeRedis() })
+}
 app.addHook('preClose', (done) => {
   io.local.disconnectSockets(true)
   done()
