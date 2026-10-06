@@ -40,12 +40,19 @@ pour voir les événements bruts :
 `docker compose -f compose.scale.yml exec redis redis-cli XRANGE cotations:events - + COUNT 10`.
 **Ne pas utiliser `down -v`** si l'on veut garder le journal.
 
+La présence est partagée par des baux Redis par socket/instrument : chaque worker
+compte les **pseudonymes uniques** encore valides et diffuse le résultat aux deux
+workers. Le bail est renouvelé chaque seconde, expire six secondes après le dernier
+renouvellement en cas de crash, ou cinq secondes après une déconnexion normale.
+`npx tsx scripts/presence-smoke.ts` vérifie deux workers, plusieurs onglets du même
+pseudonyme et la grâce. Le journal permanent concerne ticks et bids, **pas** la présence.
+
 **Limites** : croissance disque sans limite (et échec des écritures si disque plein),
 pas de réplication Redis/sauvegarde hors du volume, pas de garantie contre une panne
-de disque ou la perte du volume. La présence et sa grâce de 5 s restent locales aux
-workers : le comptage multi-instance n'est pas cohérent. Les pseudonymes des bids sont
-conservés sans durée de purge ; ne pas utiliser de vraies identités. Le mode mono-instance
-`docker compose up --build` reste la démo de référence.
+de disque ou la perte du volume. La présence est éventuellement cohérente (sondage
+chaque seconde), pas instantanée ni résistante à une panne de Redis. Les pseudonymes
+des bids sont conservés sans durée de purge ; ne pas utiliser de vraies identités.
+Le mode mono-instance `docker compose up --build` reste la démo de référence.
 
 ## API REST
 

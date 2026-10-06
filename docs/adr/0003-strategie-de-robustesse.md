@@ -32,7 +32,9 @@ ni persistance des bids, ni haute disponibilite bancaire.
 Socket.IO Redis. Redis est l'autorite pour les carnets, bids, sequences et le journal
 integral des evenements (AOF sur volume). SSE relit les cotations numerotees depuis Redis
 sans limite de 50 ticks ; les deux workers acceptent un seul tick par fenetre de 500 ms
-via transaction optimiste. **Ce montage ne remplace pas la decision mono-instance** :
-le comptage de presence et sa grace restent locaux ; aucune purge, replication ou
-sauvegarde externe n'est fournie. Le rejeu illimite implique stockage illimite, dont
-des pseudonymes de bids ; ne pas utiliser de vraies identites.
+via transaction optimiste. La presence est calculee a partir de baux Redis par socket,
+dedoublonnes par pseudonyme, avec grace de 5 s ; les deux workers sondent Redis chaque
+seconde et publient un compte commun. **Ce montage ne remplace pas la decision mono-instance** :
+pas de replication, sauvegarde externe, purge, ni garantie de disponibilite de Redis.
+Le rejeu illimite implique stockage illimite, dont des pseudonymes de bids ; ne pas
+utiliser de vraies identites.

@@ -5,6 +5,8 @@ import { ajouterBid, avancer, createStore, type NouveauBid, type Store } from '.
 const STATE = 'cotations:state'
 const EVENTS = 'cotations:events'
 const prices = (sym: string) => `cotations:prices:${sym}`
+const presence = (sym: string) => `cotations:presence:${sym}`
+const viewer = (user: string, socketId: string) => JSON.stringify([user, socketId])
 type Client = ReturnType<typeof createClient>
 
 // One Redis transaction is the authority for market state, history and replay indexes.
@@ -75,6 +77,25 @@ export class RedisMarket {
         await this.redis.unwatch()
       }
     } })
+  }
+
+  async watch(sym: string, user: string, socketId: string) {
+    await this.redis.zAdd(presence(sym), { score: Date.now() + 6_000, value: viewer(user, socketId) })
+  }
+
+  async leave(sym: string, user: string, socketId: string, grace = true) {
+    if (grace) {
+      await this.redis.zAdd(presence(sym), { score: Date.now() + 5_000, value: viewer(user, socketId) }, { XX: true })
+    } else {
+      await this.redis.zRem(presence(sym), viewer(user, socketId))
+    }
+  }
+
+  async viewerCount(sym: string): Promise<number> {
+    const now = Date.now()
+    await this.redis.zRemRangeByScore(presence(sym), '-inf', now)
+    const active = await this.redis.zRangeByScore(presence(sym), `(${now}`, '+inf')
+    return new Set(active.map((entry) => (JSON.parse(entry) as [string, string])[0])).size
   }
 
   async replay(sym: string, after: number, count = 100): Promise<CarnetOrdres[]> {
