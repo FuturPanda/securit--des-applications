@@ -1,0 +1,36 @@
+name: Export SARIF
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  security-events: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download completed CodeQL, Semgrep and Trivy analyses
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main || { echo '::error::Run this workflow on main'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$GITHUB_REF&per_page=100" > analyses.json
+          mkdir sarif
+          for spec in \
+            'CodeQL|/language:javascript-typescript|codeql-javascript-typescript' \
+            'CodeQL|/language:actions|codeql-actions' \
+            'Semgrep OSS|semgrep|semgrep' \
+            'Trivy|trivy-image|trivy-image'; do
+            IFS='|' read -r tool category file <<< "$spec"
+            id=$(jq -r --arg sha "$GITHUB_SHA" --arg tool "$tool" --arg category "$category" \
+              '[.[] | select(.commit_sha == $sha and .tool.name == $tool and .category == $category)] | first | .id // empty' analyses.json)
+            test -n "$id" || { echo "::error::$tool ($category) not yet available for $GITHUB_SHA; wait for security and CodeQL to finish, then rerun"; exit 1; }
+            gh api -H 'Accept: application/sarif+json' \
+              "repos/$GITHUB_REPOSITORY/code-scanning/analyses/$id" > "sarif/$file.sarif"
+            jq -e '.version == "2.1.0" and (.runs | type == "array")' "sarif/$file.sarif" > /dev/null
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarif-${{ github.sha }}
+          path: sarif/*.sarif
+          if-no-files-found: error

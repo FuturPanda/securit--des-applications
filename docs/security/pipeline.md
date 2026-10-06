@@ -11,6 +11,19 @@ la décision est rouge. Un rapport absent ou une panne de scanner fait aussi éc
 | Gitleaks (secrets) | historique Git complet | au moins un secret détecté | `gitleaks.json` dans les artefacts Actions ; le faible secret de démonstration initial n'est pas détecté par entropie |
 | Trivy (image) | image construite depuis ce Dockerfile | au moins un high/critical | SARIF `trivy-image` dans Security → Code scanning |
 
+## Télécharger les SARIF
+
+Une fois les jobs **security** et **CodeQL** terminés sur le même commit `main`, ouvrir
+**Actions → Export SARIF → Run workflow** (branche `main`). Le run publie un artefact
+`sarif-<SHA>` contenant les **deux SARIF CodeQL** (JavaScript/TypeScript et Actions),
+`semgrep.sarif` et `trivy-image.sarif`, récupérés depuis les analyses Code scanning
+pour **ce SHA exact**. Si une analyse manque encore, attendre sa fin et relancer
+l'export ; aucun résultat d'un ancien commit n'est substitué. CodeQL est en
+configuration automatique GitHub, pas dans `security.yml`. `npm-audit` et `gitleaks`
+sont déjà téléchargeables comme artefacts **JSON** du run `security` : ils ne sont
+pas des SARIF. La branche rouge `demo/red-sast` se consulte dans Security ; cet
+export manuel est réservé au `main`.
+
 ## Rejouer la démonstration
 
 - [Exécution verte sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360435594) : les quatre jobs passent ; `npm audit` ne remonte plus de vulnérabilité à la date du run.
