@@ -10,13 +10,17 @@ Pour conserver les tokens entre redémarrages, définir `JWT_SECRET` hors du dé
 Le token REST reste une **identité de démonstration choisie librement**, pas une authentification bancaire.
 
 ```bash
-npm install
-npm start          # http://localhost:3009
-# ou : docker compose up --build
+docker compose up --build   # app + Redis sur http://localhost:3009
 ```
 
-Pour brancher l'application sur un Redis local déjà lancé (état du marché, journal des
-cotations et rejeu complet des bids) :
+Le Compose par défaut démarre une instance et Redis avec un volume persistant : rejeu
+complet des cotations SSE **et** des bids après une coupure Socket.IO. Il génère un
+`JWT_SECRET` aléatoire au démarrage si la variable est absente ; les anciens tokens ne
+survivent pas au redémarrage de l'app. Pour conserver les tokens, définir `JWT_SECRET`
+hors du dépôt. Ne pas lancer `docker compose down -v` si l'on veut garder le journal.
+
+Sans Docker : `npm install && npm start` lance le mode mémoire (50 cotations par
+instrument, 100 bids récents). Pour brancher l'app sur un Redis local déjà lancé :
 
 ```bash
 npm run start:redis            # REDIS_URL=redis://127.0.0.1:6379 par défaut
@@ -66,7 +70,8 @@ pas de réplication Redis/sauvegarde hors du volume, pas de garantie contre une 
 de disque ou la perte du volume. La présence est éventuellement cohérente (sondage
 chaque seconde), pas instantanée ni résistante à une panne de Redis. Les pseudonymes
 des bids sont conservés sans durée de purge ; ne pas utiliser de vraies identités.
-Le mode mono-instance `docker compose up --build` reste la démo de référence.
+Le mode mono-instance avec Redis (`docker compose up --build`) reste la démo de référence ;
+`compose.scale.yml` est l'expérience à deux workers.
 
 ## API REST
 
@@ -109,21 +114,22 @@ ete rejoues et lesquels. Verification :
 ## Etat de la couche temps reel
 
 Les cotations passent par SSE (un instrument par connexion), les offres et la presence par
-Socket.IO. A la reconnexion, SSE rejoue les mises a jour numerotees disponibles (50 par
-instrument), ou envoie un instantane si le trou est trop grand. Le bouton « Couper le flux SSE
-3 s » permet une demonstration a deux navigateurs. Ce n'est pas une garantie de persistance
-apres redemarrage du serveur. Verification du flux et des rooms :
+Socket.IO. Avec Docker Compose et Redis, SSE rejoue toutes les cotations manquées depuis le
+numéro reçu, même après redémarrage de l'app. Sans Redis (`npm start`), le buffer est borné
+à 50 cotations par instrument : un trou plus ancien reçoit un instantané et le buffer est
+perdu au redémarrage. Le bouton « Couper le flux SSE 3 s » permet une démonstration à deux
+navigateurs. Vérification du flux et des rooms :
 `npx tsx src/realtime/recovery.test.ts`. `npm run scenario -- --avec-strategie` illustre
 la convergence ; `src/realtime/naive-stub.ts` est conserve pour comparaison historique.
 
-Demo : `npm start`, ouvrir `http://localhost:3009` dans deux navigateurs, selectionner ACME
+Demo : `docker compose up --build`, ouvrir `http://localhost:3009` dans deux navigateurs, selectionner ACME
 sur chacun et noter leurs sequences. Generer un JWT pour chaque navigateur puis se connecter :
 la presence passe a 2. Cliquer « Couper le flux SSE 3 s » dans un navigateur : l'autre
 continue ; au retour, la liste « Cotations rejouées » affiche chaque sequence manquee
 et son prix, puis les deux sequences convergent.
 Changer l'instrument dans un onglet : la presence de la room ACME passe a 1.
-Pour un trou de plus de 50 ticks, la verification automatisee teste le retour par instantane
-sans imposer 26 secondes d'attente pendant la soutenance.
+Le test automatisé couvre aussi le mode mémoire : au-delà de 50 ticks, il vérifie
+le retour par instantané sans attendre 26 secondes pendant la soutenance.
 
 ## Soutenance
 
