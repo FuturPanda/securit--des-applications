@@ -9,7 +9,7 @@ Cinq findings du [rapport d'audit](./rapport-audit.md) et moins d'une journée a
 soutenance : on ne peut pas déployer une vraie authentification, un stockage durable et une
 protection de charge tout en préparant deux démonstrations. Les critères doivent servir
 également à un sixième finding futur. On protège d'abord l'attribution des bids et
-l'intégrité des cotations (ER1 du [modèle de menace](./threat-model.md)), puis la continuité
+l'intégrité des cotations (ER1 de la [passerelle EBIOS](./ebios-rm.md)), puis la continuité
 du flux (ER2) ; il ne s'agit pas d'argent réel.
 
 ## Décision

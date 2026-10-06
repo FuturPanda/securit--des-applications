@@ -2,7 +2,7 @@
 
 Vérification contre le dépôt `main` au 2026-10-05 ; un [x] atteste la **présence d'un artefact réel**, pas l'absence de risque. Vérifier de nouveau après tout changement. Les liens pointent vers les fichiers ; `git ls-files docs/ .github/workflows/` permet de contrôler qu'ils sont versionnés.
 
-- [x] **Modèle de menace** : [DFD, quatre frontières, STRIDE et événements redoutés](./threat-model.md). F1/F3/F4 restent ouverts ; le document ne décrit pas de contrôle fictif.
+- [x] **Modèle de menace** : [DFD, quatre frontières et STRIDE](./threat-model.md) ; [biens essentiels, événements redoutés et passerelle EBIOS](./ebios-rm.md) dans un document distinct. F1/F3/F4 restent ouverts ; aucun contrôle fictif.
 - [x] **Rapport d'audit** : [cinq findings prouvés, CWE, CVSS 4.0 et classement](./rapport-audit.md), ancrés au commit `788e35b` ; [script de reproduction local](../../scripts/audit-proof.ts).
 - [x] **ADR sécurité** : [ADR-2 de priorisation](./ADR-2-priorisation-audit.md) ; ne pas le confondre avec [l'ADR-2 de convergence temps réel](../adr/0002-strategie-de-convergence.md).
 - [x] **Registre des traitements** : [T-01 token/présence et T-02 bids](./registre-traitements.md), avec finalités, catégories, destinataires, base légale **candidate** et durées réelles/absentes explicitement indiquées.
