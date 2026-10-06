@@ -49,3 +49,29 @@ printf '%s\n' '{"name":"demo-build","version":"1.0.0","scripts":{"install":"exit
 check_block 'unreviewed dependency build (exit 42 must never run)' 'dependencies with build scripts must be reviewed' install
 echo 'Other paranoid guards (jail, trust downgrade, missing integrity, OSV outage) need controlled fixtures; the package trials above do not test them.'
 '''
+
+[tasks."demo:two-workers"]
+description = "Open two Safari tabs, one pinned to each local worker"
+run = '''
+set -eu
+for pair in 'localhost a' '127.0.0.1 b'; do
+  set -- $pair
+  headers=$(curl --retry 10 --retry-delay 1 --retry-all-errors -fsS -o /dev/null -D - "http://$1:3009/api/instruments") || {
+    echo 'Start the scale demo first: docker compose -f compose.scale.yml up --build' >&2
+    exit 1
+  }
+  printf '%s\n' "$headers" | grep -Fqi "X-Demo-Worker: $2" || {
+    echo "Expected $1:3009 to be pinned to worker $2; start compose.scale.yml" >&2
+    exit 1
+  }
+done
+osascript <<'APPLESCRIPT'
+tell application "Safari"
+  activate
+  make new document with properties {URL:"http://localhost:3009"}
+  tell window 1
+    set current tab to (make new tab with properties {URL:"http://127.0.0.1:3009"})
+  end tell
+end tell
+APPLESCRIPT
+'''
