@@ -27,16 +27,28 @@ try {
     socket.once('connect', resolve)
     socket.once('connect_error', reject)
   })))
-  const received = new Promise<{ userId: string }>((resolve) => sockets[1]!.once('bid:new', resolve))
+  const requestId = `scale-smoke-${Date.now()}`
+  const received = new Promise<{ userId: string; id: string }>((resolve) => sockets[1]!.once('bid:new', resolve))
   const ack = await new Promise<{ ok: boolean }>((resolve) => sockets[0]!.emit('bid:place', {
-    requestId: 'scale-smoke', instrument: 'ACME', prix: 100, quantite: 1,
+    requestId, instrument: 'ACME', prix: 100, quantite: 1,
   }, resolve))
   assert.equal(ack.ok, true)
   const bid = await Promise.race([received, new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('cross-worker broadcast timeout')), 3_000)
   })])
   assert.equal(bid.userId, 'scale-check')
-  console.log(`OK: sticky ${cookies.join(' / ')} + cross-worker Redis bid:new`)
+  const duplicate = await new Promise<{ ok: boolean; bid: { id: string } }>((resolve) => sockets[1]!.emit('bid:place', {
+    requestId, instrument: 'ACME', prix: 100, quantite: 1,
+  }, resolve))
+  assert.equal(duplicate.ok, true)
+  assert.equal(duplicate.bid.id, bid.id)
+  const books = await Promise.all(cookies.map(async (cookie) => {
+    const response = await fetch(`${base}/api/instruments/ACME/book`, { headers: { Cookie: cookie } })
+    return response.json() as Promise<{ seq: number; dernierPrix: number }>
+  }))
+  assert.ok(Math.abs(books[0]!.seq - books[1]!.seq) <= 1)
+  if (books[0]!.seq === books[1]!.seq) assert.equal(books[0]!.dernierPrix, books[1]!.dernierPrix)
+  console.log(`OK: sticky ${cookies.join(' / ')} + shared bid, idempotency and market state`)
 } finally {
   sockets.forEach((socket) => socket.disconnect())
 }
