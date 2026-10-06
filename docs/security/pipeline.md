@@ -28,7 +28,7 @@ export manuel est réservé au `main`.
 
 ## Rejouer la démonstration
 
-- [Exécution verte historique sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360435594) : les **quatre jobs d'origine** passent ; `npm audit` ne remonte plus de vulnérabilité à la date du run. Cette preuve est antérieure à l'ajout des deux jobs indépendants Aube et OSV : vérifier leur propre run avant de les annoncer verts.
+- [Exécution verte des six jobs sur `main`](https://github.com/FuturPanda/securit--des-applications/actions/runs/37439574704) : Aube et OSV passent **indépendamment** des quatre jobs d'origine ; les deux artefacts JSON sont téléchargeables. Aube indique 0 high/critical, OSV 0 résultat sur le lockfile committé à ce SHA.
 - [PR de régression, à ne pas fusionner](https://github.com/FuturPanda/securit--des-applications/pull/15) : sa branche contient une **clé JWT volontairement littérale**. Le [run rouge historique](https://github.com/FuturPanda/securit--des-applications/actions/runs/37360915654) échoue dans `Gate — ERROR findings or scanner failure` du job `sast`, après l'upload SARIF. Les trois autres jobs d'origine restent verts sur ce run ; il précède Aube/OSV.
 - [Finding Semgrep dans Security](https://github.com/FuturPanda/securit--des-applications/security/code-scanning/2) : sélectionner la branche `demo/red-sast` si la vue par défaut n'affiche que les alertes de `main`. Le résultat est sur la branche de démo, **pas** sur `main`.
 
