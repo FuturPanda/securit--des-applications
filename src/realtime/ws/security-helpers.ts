@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 if (process.env.JWT_SECRET && Buffer.byteLength(process.env.JWT_SECRET) < 32) {
   throw new Error('JWT_SECRET must be at least 32 bytes')
 }
-export const SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex')
+export const SECRET = 'change-moi' // deliberately insecure demo PR; never merge
 
 /** Genere le JWT court utilise par le client REST puis par le handshake Socket.IO. */
 export function createJwt(userId: string, secret: string): string {
