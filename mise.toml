@@ -1,0 +1,51 @@
+[tools]
+node = "22"
+aube = "1.37.0"
+
+[settings]
+minimum_release_age = "14d"
+
+[tools.trivy]
+version = "latest"
+minimum_release_age = "1d"
+
+[tasks."scan:trivy"]
+description = "Scan project dependencies with Trivy (HIGH/CRITICAL)"
+run = "trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs node_modules ."
+
+[tasks."demo:paranoid"]
+description = "Try suspicious packages in a disposable Aube project; expect security refusals"
+run = '''
+set -eu
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cp aube-workspace.yaml "$tmp/"
+printf '%s\n' '{"name":"paranoid-demo","private":true}' > "$tmp/package.json"
+
+aube config explain paranoid
+check_block() {
+  label=$1 expected=$2
+  shift 2
+  if CI=1 aube -C "$tmp" "$@" </dev/null > "$tmp/result" 2>&1; then
+    echo "FAIL: $label was allowed" >&2
+    return 1
+  fi
+  if ! grep -Fq "$expected" "$tmp/result"; then
+    echo "FAIL: $label was not blocked for the expected reason" >&2
+    head -15 "$tmp/result" >&2
+    return 1
+  fi
+  echo "PASS: $label — $expected"
+}
+
+check_block 'known malicious package' ERR_AUBE_MALICIOUS_PACKAGE add lodahs
+check_block 'lookalike package name' ERR_AUBE_SIMILAR_PACKAGE_NAME add @type/node
+# ponytail: eslint@10.12.0 was published 2026-10-02; replace with a fresh, pinned benign version after 2026-10-16.
+printf '%s\n' '{"name":"paranoid-demo","private":true,"dependencies":{"eslint":"10.12.0"}}' > "$tmp/package.json"
+check_block '14-day version quarantine' ERR_AUBE_NO_MATURE_MATCHING_VERSION install --dry-run --ignore-scripts
+mkdir "$tmp/fixture"
+printf '%s\n' '{"name":"paranoid-demo","private":true,"dependencies":{"demo-build":"file:./fixture"}}' > "$tmp/package.json"
+printf '%s\n' '{"name":"demo-build","version":"1.0.0","scripts":{"install":"exit 42"}}' > "$tmp/fixture/package.json"
+check_block 'unreviewed dependency build (exit 42 must never run)' 'dependencies with build scripts must be reviewed' install
+echo 'Other paranoid guards (jail, trust downgrade, missing integrity, OSV outage) need controlled fixtures; the package trials above do not test them.'
+'''
