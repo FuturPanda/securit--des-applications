@@ -88,7 +88,7 @@ sans imposer 26 secondes d'attente pendant la soutenance.
 ## Sécurité
 
 Le [modèle de menace DFD/STRIDE](docs/security/threat-model.md), les [événements redoutés EBIOS](docs/security/ebios-rm.md), le [rapport d'audit](docs/security/rapport-audit.md),
-l'[ADR-2 sécurité](docs/security/ADR-2-priorisation-audit.md) et le [pipeline à six jobs](docs/security/pipeline.md)
+l'[ADR-2 sécurité](docs/security/ADR-2-priorisation-audit.md) et le [pipeline à huit jobs](docs/security/pipeline.md)
 décrivent les risques, les preuves, les décisions et les runs vert/rouge de la démonstration.
 Le [registre des traitements](docs/security/registre-traitements.md) et la
 [checklist SSI](docs/security/doc-ssi-checklist.md) indiquent ce qui est réellement livré

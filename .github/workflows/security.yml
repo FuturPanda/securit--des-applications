@@ -131,6 +131,80 @@ jobs:
           if [ "$count" -gt 0 ]; then echo "::error::Gitleaks findings: $count"; exit 1; fi
           test '${{ steps.scan.outcome }}' = success || { echo '::error::Gitleaks failed without findings'; exit 1; }
 
+  sbom:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app image
+        run: docker build --pull -t cotations:ci .
+      - name: Trivy CycloneDX SBOM
+        id: scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: image
+          image-ref: cotations:ci
+          format: cyclonedx
+          output: sbom.cdx.json
+      - name: Save SBOM
+        if: always() && hashFiles('sbom.cdx.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+      - name: Gate — missing SBOM or generator failure
+        if: always()
+        run: |
+          test -s sbom.cdx.json || { echo '::error::Trivy produced no SBOM'; exit 1; }
+          jq -e '.bomFormat == "CycloneDX" and ((.components // []) | length > 0)' sbom.cdx.json > /dev/null \
+            || { echo '::error::SBOM is not a CycloneDX document with components'; exit 1; }
+          echo "Components: $(jq '(.components // []) | length' sbom.cdx.json)"
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::Trivy SBOM generation failed'; exit 1; }
+
+  dast:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start application
+        run: docker compose up -d --build
+      - name: Wait for application
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3009/api/instruments > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo '::error::Application never answered on port 3009'
+          docker compose logs --no-color
+          exit 1
+      - name: ZAP baseline scan
+        id: scan
+        continue-on-error: true
+        run: |
+          mkdir -p zap-out && chmod 777 zap-out
+          docker run --rm --network host -v "$PWD/zap-out:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:2.16.1 \
+            zap-baseline.py -t http://127.0.0.1:3009 -m 2 -I -J zap.json -r zap.html
+      - name: Save DAST report
+        if: always() && hashFiles('zap-out/zap.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline
+          path: zap-out
+      - name: Gate — high risk DAST alerts or scanner failure
+        if: always()
+        run: |
+          test -s zap-out/zap.json || { echo '::error::ZAP produced no report'; exit 1; }
+          jq -r '[.site[].alerts[]] | group_by(.riskcode)[] | "riskcode \(.[0].riskcode): \(length)"' zap-out/zap.json
+          count=$(jq '[.site[].alerts[] | select((.riskcode | tonumber) >= 3)] | length' zap-out/zap.json)
+          if [ "$count" -gt 0 ]; then echo "::error::ZAP high risk alerts: $count"; exit 1; fi
+          test '${{ steps.scan.outcome }}' = success || { echo '::error::ZAP failed without high risk alerts'; exit 1; }
+      - name: Stop application
+        if: always()
+        run: docker compose down -v
+
   image:
     runs-on: ubuntu-latest
     permissions:
