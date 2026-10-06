@@ -15,6 +15,16 @@ npm start          # http://localhost:3009
 # ou : docker compose up --build
 ```
 
+Pour brancher l'application sur un Redis local déjà lancé (état du marché, journal des
+cotations et rejeu complet des bids) :
+
+```bash
+npm run start:redis            # REDIS_URL=redis://127.0.0.1:6379 par défaut
+```
+
+Le script exige un `JWT_SECRET` ; il en génère un aléatoire si la variable est absente.
+Pour repartir d'un marché vierge : `redis-cli --scan --pattern 'cotations:*' | xargs redis-cli del`.
+
 ## Essai local à deux instances avec journal Redis persistant
 
 ```bash
@@ -80,6 +90,21 @@ marche continue d'avancer toutes les 500 ms.
 
 Les bids agressifs ajoutent une pression haussiere bornee au tick suivant. Socket.IO permet de voir chaque nouveau bid immediatement. Ses rooms `instrument:<symbole>`
 representent les spectateurs authentifies ; la presence garde un delai de grace de 5 secondes.
+
+### Rattrapage apres une coupure Socket.IO
+
+A la reconnexion, le client renvoie le numero du dernier bid vu avec `bid:resync` et le
+serveur repond avec le meme vocabulaire que la reprise SSE :
+
+- **`replay`** : les bids manques sont renvoyes dans l'ordre. Avec Redis le journal couvre
+  tout l'historique, donc bien au-dela des 30 bids de `bid:history`.
+- **`snapshot`** : sans Redis, `bidsRecents` est borne a 100 entrees ; un trou plus ancien
+  n'est plus rejouable et le serveur renvoie les 30 derniers bids.
+
+L'interface affiche le delta recu sous les boutons de demonstration : combien de bids ont
+ete rejoues et lesquels. Verification :
+`npx tsx src/realtime/bid-resync.test.ts` (les deux modes) et, contre un serveur lance,
+`npx tsx scripts/bid-resync-smoke.ts`.
 
 ## Etat de la couche temps reel
 

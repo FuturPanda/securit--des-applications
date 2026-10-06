@@ -26,6 +26,15 @@ buffer convergent vers le dernier etat, sans preuve que chaque tick a ete affich
 redemarrage remet a zero l'etat et les buffers en memoire : cette solution ne garantit
 ni persistance des bids, ni haute disponibilite bancaire.
 
+## Rattrapage du canal de commandes
+
+Socket.IO ne portait aucun rattrapage : a la reconnexion le client recevait `bid:history`,
+c'est-a-dire les 30 derniers bids, pas les bids manques. Les bids etant deja numerotes
+(`bid-<n>`), le client renvoie son dernier numero vu via `bid:resync` et le serveur repond
+`replay` ou `snapshot`, comme la reprise SSE. En mode Redis, l'index trie `cotations:bids`
+couvre tout l'historique : le rejeu est complet. En memoire, il reste borne par les 100
+entrees de `bidsRecents`, et un trou plus ancien retombe sur un instantane.
+
 ## Essai de fan-out distinct (non retenu comme strategie de convergence)
 
 `compose.scale.yml` lance deux instances avec HAProxy sticky par cookie et adaptateur

@@ -9,7 +9,7 @@ import {
 } from '../ws/security-helpers.ts'
 import { isAllowedOrigin } from '../origin.ts'
 import type { Bid } from '../../domain.ts'
-import { ajouterBid, type Store } from '../../store.ts'
+import { ajouterBid, numeroBid, type Store } from '../../store.ts'
 import type { RedisMarket } from '../redis-market.ts'
 
 interface PlaceBidPayload {
@@ -23,6 +23,12 @@ type PlaceBidAck =
   | { ok: true; bid: Bid }
   | { ok: false; error: string }
 
+/** Meme vocabulaire que la reprise SSE : rejeu si le journal couvre le trou, sinon instantane. */
+interface BidResyncResult {
+  type: 'replay' | 'snapshot' | 'refus'
+  bids: Bid[]
+}
+
 interface ServerToClientEvents {
   'auth:ready': (payload: { userId: string }) => void
   'bid:history': (bids: Bid[]) => void
@@ -35,6 +41,10 @@ interface ClientToServerEvents {
   'bid:place': (
     payload: PlaceBidPayload,
     ack?: (result: PlaceBidAck) => void,
+  ) => void
+  'bid:resync': (
+    lastBidId: number,
+    ack?: (result: BidResyncResult) => void,
   ) => void
 }
 
@@ -204,6 +214,36 @@ export function startSocketIoServer(httpServer: HttpServer, store: Store, market
       } catch (error) {
         console.error('Bid persistence:', error)
         ack?.({ ok: false, error: 'Stockage indisponible' })
+      }
+    })
+
+    socket.on('bid:resync', async (raw, ack) => {
+      if (!limiter.hit()) {
+        ack?.({ type: 'refus', bids: [] })
+        return
+      }
+      const dernier = Number.isSafeInteger(raw) && raw > 0 ? raw : 0
+      try {
+        if (market) {
+          if (dernier === 0) {
+            const state = await market.read()
+            ack?.({ type: 'snapshot', bids: state.bidsRecents.slice(-30) })
+            return
+          }
+          ack?.({ type: 'replay', bids: await market.replayBids(dernier) })
+          return
+        }
+        // Mode memoire : `bidsRecents` est borne, un trou plus ancien n'est plus rejouable.
+        const recents = store.bidsRecents
+        const plusAncien = recents.length ? numeroBid(recents[0]!.id) : dernier + 1
+        if (dernier === 0 || plusAncien > dernier + 1) {
+          ack?.({ type: 'snapshot', bids: recents.slice(-30) })
+          return
+        }
+        ack?.({ type: 'replay', bids: recents.filter((bid) => numeroBid(bid.id) > dernier) })
+      } catch (error) {
+        console.error('Bid resync:', error)
+        ack?.({ type: 'refus', bids: [] })
       }
     })
 
