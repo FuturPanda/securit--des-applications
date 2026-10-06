@@ -258,6 +258,8 @@
       line-height: 1.45;
     }
     #replayed ol { max-height: 140px; overflow: auto; margin: 6px 0; padding-left: 24px; }
+    .demo-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .demo-controls button:disabled { opacity: .45; cursor: not-allowed; }
 
     .ledger { box-shadow: 8px 8px 0 var(--ink); }
     .ledger-wrap { max-height: 430px; overflow: auto; }
@@ -349,7 +351,14 @@
         <p class="market-note">
           <span id="recovery-status" role="status">En attente du premier instantané.</span>
           <span id="presence-status">Spectateurs authentifiés : —</span><br />
-          <button type="button" id="demo-cut">Couper le flux SSE 3 s (démo)</button>
+          <span class="demo-controls">
+            <button type="button" id="demo-cut">Couper le flux SSE 3 s (démo)</button>
+            <button type="button" id="demo-ws-cut" disabled>Couper le WebSocket (démo)</button>
+            <button type="button" id="demo-ws-restore" disabled>Rétablir le WebSocket</button>
+          </span>
+          <div id="bid-replayed" hidden>
+            <span id="bid-replayed-title"></span> <ol id="bid-replayed-list"></ol>
+          </div>
           <div id="replayed" hidden>
             Cotations rejouées (instrument sélectionné) : <ol id="replayed-list"></ol>
           </div>
@@ -448,10 +457,15 @@
     const bidSubmit = document.getElementById('bid-submit')
     const bidNote = document.getElementById('bid-note')
     const bidHistory = document.getElementById('bid-history')
+    const wsCutBtn = document.getElementById('demo-ws-cut')
+    const wsRestoreBtn = document.getElementById('demo-ws-restore')
     const savedToken = sessionStorage.getItem('socket-token') ?? ''
     const SERVER_ORIGIN = 'http://localhost:3009'
     let tradingEnabled = false
     let recentBids = []
+    let wsDemoCut = false
+    let lastBidId = 0
+    let bidIdAvantCoupure = null
 
     tokenInput.value = savedToken
 
@@ -516,21 +530,54 @@
       socket.auth = { token }
       socketStatus.textContent = 'Connexion au serveur…'
 
+      wsDemoCut = false
       if (socket.connected) socket.disconnect()
       socket.connect()
+      setWsDemoButtons()
     }
 
     document.getElementById('auth-disconnect').onclick = () => {
+      wsDemoCut = false
       socket.disconnect()
       socket.auth = {}
       tokenInput.value = ''
       sessionStorage.removeItem('socket-token')
       socketStatus.textContent = 'Non authentifié.'
       setTradingAccess(false)
+      setWsDemoButtons()
+    }
+
+    function setWsDemoButtons() {
+      wsCutBtn.disabled = !socket.connected
+      wsRestoreBtn.disabled = socket.connected || !socket.auth?.token
+    }
+
+    wsCutBtn.onclick = () => {
+      if (!socket.connected) return
+      wsDemoCut = true
+      socket.disconnect()
+    }
+
+    wsRestoreBtn.onclick = () => {
+      if (socket.connected) return
+      wsDemoCut = false
+      socketStatus.textContent = 'Reconnexion au serveur…'
+      socket.connect()
+      setWsDemoButtons()
     }
 
     socket.on('connect', () => {
+      wsDemoCut = false
       socketStatus.textContent = 'Authentification…'
+      setWsDemoButtons()
+      if (bidIdAvantCoupure === null) return
+      const depuis = bidIdAvantCoupure
+      bidIdAvantCoupure = null
+      socket.emit('bid:resync', depuis, (resultat) => {
+        if (!resultat) return
+        ingestBids(resultat.bids)
+        renderBidDelta(resultat, depuis)
+      })
     })
 
     socket.on('auth:ready', ({ userId }) => {
@@ -549,12 +596,17 @@
       socketStatus.textContent = `Accès refusé — ${error.message}`
       sessionStorage.removeItem('socket-token')
       setTradingAccess(false, null, true)
+      setWsDemoButtons()
     })
 
     socket.on('disconnect', () => {
-      socketStatus.textContent = 'Session fermée.'
+      bidIdAvantCoupure = lastBidId
+      socketStatus.textContent = wsDemoCut
+        ? 'WebSocket coupé (démo) — token conservé'
+        : 'Session fermée.'
       setTradingAccess(false)
       presenceStatus.textContent = 'Spectateurs authentifiés : —'
+      setWsDemoButtons()
     })
 
     if (savedToken) {
@@ -562,6 +614,7 @@
       socketStatus.textContent = 'Connexion au serveur…'
       socket.connect()
     }
+    setWsDemoButtons()
 
     document.getElementById('bid').onsubmit = (event) => {
       event.preventDefault()
@@ -613,9 +666,35 @@
       socketPill.classList.toggle('error', error)
     }
 
+    function numeroBid(id) {
+      const numero = Number(String(id).slice('bid-'.length))
+      return Number.isSafeInteger(numero) && numero > 0 ? numero : 0
+    }
+
+    function renderBidDelta(resultat, depuis) {
+      const bloc = document.getElementById('bid-replayed')
+      const titre = document.getElementById('bid-replayed-title')
+      const liste = document.getElementById('bid-replayed-list')
+      if (resultat.type === 'refus') {
+        bloc.hidden = false
+        titre.textContent = 'Rattrapage des bids refusé (limite de débit).'
+        liste.innerHTML = ''
+        return
+      }
+      const manques = resultat.bids.filter((bid) => numeroBid(bid.id) > depuis)
+      bloc.hidden = false
+      titre.textContent = resultat.type === 'replay'
+        ? `Bids rejoués après la coupure WebSocket (depuis bid-${depuis}) : ${manques.length}`
+        : `Instantané des bids : ${manques.length} affichés, les plus anciens du trou sont perdus`
+      liste.innerHTML = manques.map((bid) => `<li>${escapeHtml(bid.id)} · ${escapeHtml(bid.instrument)} · ${escapeHtml(bid.userId)} · ${Number(bid.prix).toFixed(2)}</li>`).join('')
+    }
+
     function ingestBids(bids) {
       const parId = new Map(recentBids.map((bid) => [bid.id, bid]))
-      bids.forEach((bid) => parId.set(bid.id, bid))
+      bids.forEach((bid) => {
+        parId.set(bid.id, bid)
+        lastBidId = Math.max(lastBidId, numeroBid(bid.id))
+      })
       recentBids = [...parId.values()]
         .sort((a, b) => b.creeA - a.creeA)
         .slice(0, 30)

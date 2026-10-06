@@ -1,9 +1,10 @@
 import { createClient, WatchError } from 'redis'
 import type { Bid, CarnetOrdres } from '../domain.ts'
-import { ajouterBid, avancer, createStore, type NouveauBid, type Store } from '../store.ts'
+import { ajouterBid, avancer, createStore, numeroBid, type NouveauBid, type Store } from '../store.ts'
 
 const STATE = 'cotations:state'
 const EVENTS = 'cotations:events'
+const BIDS = 'cotations:bids'
 const prices = (sym: string) => `cotations:prices:${sym}`
 const presence = (sym: string) => `cotations:presence:${sym}`
 const viewer = (user: string, socketId: string) => JSON.stringify([user, socketId])
@@ -45,7 +46,10 @@ export class RedisMarket {
         state.lastTickAt = now
         const bid = avancer(state)
         const transaction = this.redis.multi().set(STATE, encode(state))
-        if (bid) transaction.xAdd(EVENTS, '*', { type: 'bid', data: JSON.stringify(bid) })
+        if (bid) {
+          transaction.xAdd(EVENTS, '*', { type: 'bid', data: JSON.stringify(bid) })
+          transaction.zAdd(BIDS, { score: numeroBid(bid.id), value: JSON.stringify(bid) })
+        }
         for (const carnet of state.carnets.values()) {
           transaction.zAdd(prices(carnet.instrument), { score: carnet.seq, value: JSON.stringify(carnet) })
           transaction.xAdd(EVENTS, '*', { type: 'tick', instrument: carnet.instrument, seq: String(carnet.seq), data: JSON.stringify(carnet) })
@@ -70,6 +74,7 @@ export class RedisMarket {
         const bid = ajouterBid(state, nouveau, true)
         const transaction = this.redis.multi().set(STATE, encode(state))
           .xAdd(EVENTS, '*', { type: 'bid', data: JSON.stringify(bid) })
+          .zAdd(BIDS, { score: numeroBid(bid.id), value: JSON.stringify(bid) })
         if (await transaction.exec()) return { bid, created: true }
       } catch (error) {
         if (!(error instanceof WatchError)) throw error
@@ -96,6 +101,14 @@ export class RedisMarket {
     await this.redis.zRemRangeByScore(presence(sym), '-inf', now)
     const active = await this.redis.zRangeByScore(presence(sym), `(${now}`, '+inf')
     return new Set(active.map((entry) => (JSON.parse(entry) as [string, string])[0])).size
+  }
+
+  /** Bids numerotes apres `after` : le journal couvre tout l'historique. */
+  async replayBids(after: number, count = 200): Promise<Bid[]> {
+    const rows = await this.redis.zRangeByScore(BIDS, `(${after}`, '+inf', {
+      LIMIT: { offset: 0, count },
+    })
+    return rows.map((row) => JSON.parse(row) as Bid)
   }
 
   async replay(sym: string, after: number, count = 100): Promise<CarnetOrdres[]> {

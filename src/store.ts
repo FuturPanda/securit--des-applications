@@ -44,6 +44,12 @@ export interface NouveauBid {
   source: Bid['source']
 }
 
+/** `bid-12` -> 12 ; 0 si l'identifiant n'a pas la forme attendue. */
+export function numeroBid(id: string): number {
+  const numero = Number(id.slice('bid-'.length))
+  return Number.isSafeInteger(numero) && numero > 0 ? numero : 0
+}
+
 export function ajouterBid(store: Store, nouveau: NouveauBid, keepAll = false): Bid {
   const cleRequete = nouveau.requestId
     ? `${nouveau.userId}:${nouveau.requestId}`
