@@ -1,4 +1,4 @@
-# Local fan-out experiment; the market and replay buffers remain process-local.
+# Local shared-market experiment; Redis volume contains the untrimmed event log.
 services:
   redis:
     image: redis:7-alpine
