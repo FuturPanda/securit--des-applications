@@ -1,8 +1,6 @@
 import { buildSeed, INSTRUMENTS } from './seed.ts'
 import { tickSuivant, type Bid, type CarnetOrdres } from './domain.ts'
 
-// Le stub diffuse le carnet COMPLET de TOUS les instruments a TOUS les clients, a chaque tick,
-// sans tenir compte des abonnements. Aucun numero de sequence exploite a la reconnexion.
 
 export interface Store {
   carnets: Map<string, CarnetOrdres>
@@ -76,7 +74,6 @@ export function ajouterBid(store: Store, nouveau: NouveauBid): Bid {
   return bid
 }
 
-/** Avance le marche de 500 ms et cree occasionnellement un bid simule. */
 export function avancer(store: Store): Bid | null {
   store.graine++
   store.ticksDepuisBidSimule++

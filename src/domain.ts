@@ -1,5 +1,3 @@
-// Domaine : flux de cotations et carnet d'ordres par instrument. Pur, sans I/O.
-
 export interface Niveau {
   prix: number
   quantite: number
@@ -7,10 +5,10 @@ export interface Niveau {
 
 export interface CarnetOrdres {
   instrument: string
-  bids: Niveau[] // tries prix decroissant
-  asks: Niveau[] // tries prix croissant
+  bids: Niveau[] 
+  asks: Niveau[] 
   dernierPrix: number
-  seq: number // numero de sequence des mises a jour
+  seq: number 
 }
 
 export interface Instrument {
@@ -45,7 +43,6 @@ export function creerCarnet(instrument: string, prixInitial: number): CarnetOrdr
   }
 }
 
-/** Hash deterministe -> [0, 1). */
 function hash01(n: number): number {
   let x = (n ^ 0x9e3779b9) >>> 0
   x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0
@@ -53,10 +50,6 @@ function hash01(n: number): number {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296
 }
 
-/**
- * Generateur deterministe : oscillation aleatoire + pression bornee des bids recus
- * depuis le tick precedent.
- */
 export function tickSuivant(
   carnet: CarnetOrdres,
   graine: number,
